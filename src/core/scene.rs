@@ -20,6 +20,6 @@ impl<'a> Scene<'a>{
     }
 
     pub(crate) fn remove_entity(&self, entity: Entity) {
-
+      self.entities.swap_remove(self.entities.binary_search_by(f))
     }
 }
