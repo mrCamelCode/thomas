@@ -7,7 +7,7 @@ pub struct Scene<'a> {
     entities: Vec<Entity<'a>>,
 }
 
-impl<'a> Scene<'a>{
+impl<'a> Scene<'a> {
     pub fn new(name: &str) -> Scene {
         Scene {
             name: name.to_string(),
@@ -15,11 +15,11 @@ impl<'a> Scene<'a>{
         }
     }
 
-    pub fn add_entity(&self) {
+    pub fn add_entity(&self) {}
 
-    }
-
-    pub(crate) fn remove_entity(&self, entity: Entity) {
-      self.entities.swap_remove(self.entities.binary_search_by(f))
+    pub(crate) fn remove_entity(&mut self, entity: Entity) {
+        if let Some(found_index) = self.entities.iter().position(|e| e.id() == entity.id()) {
+            self.entities.swap_remove(found_index);
+        };
     }
 }

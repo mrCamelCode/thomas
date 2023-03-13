@@ -9,19 +9,16 @@ use super::data::Vector2;
 pub struct Entity<'a> {
     id: String,
     name: String,
-    scene: &'a Scene<'a>,
     transform: Transform,
     behaviours: Vec<Box<dyn Behaviour>>,
 }
 
 impl<'a> Entity<'a> {
-    pub fn new(name: &str, scene: &Scene) -> Entity<'a> {
+    pub fn create(name: &str, scene: &'a mut Scene<'a>) -> Entity<'a> {
         Entity {
             // TODO: Generate a new ID for every entity.
             id: "123".to_string(),
             name: name.to_string(),
-            // TODO: Fix lifetime specifier complaint.
-            scene,
             transform: Transform::new(Vector2::zero()),
             behaviours: vec![],
         }
@@ -37,4 +34,7 @@ impl<'a> Entity<'a> {
         self.name.as_str()
     }
 
+    pub fn id(&self) -> &str {
+        self.id.as_str()
+    }
 }
