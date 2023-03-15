@@ -1,13 +1,12 @@
 use super::Entity;
 
-/// Houses a slice of a game world. Represents a single renderable
-/// section of the world that contains Entities.
-pub struct Scene<'a> {
+/// Houses a slice of a game world. Represents a single renderable section of the world that contains Entities.
+pub struct Scene {
     name: String,
-    entities: Vec<Entity<'a>>,
+    entities: Vec<Box<Entity>>,
 }
 
-impl<'a> Scene<'a> {
+impl Scene {
     pub fn new(name: &str) -> Scene {
         Scene {
             name: name.to_string(),
@@ -15,7 +14,7 @@ impl<'a> Scene<'a> {
         }
     }
 
-    pub fn add_entity(&self) {}
+    pub fn add_entity(&mut self, entity: &Entity) {}
 
     pub(crate) fn remove_entity(&mut self, entity: Entity) {
         if let Some(found_index) = self.entities.iter().position(|e| e.id() == entity.id()) {

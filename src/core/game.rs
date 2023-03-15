@@ -1,17 +1,17 @@
 use super::Scene;
 
-pub struct Game<'a> {
-  active_scene: Scene<'a>,
+pub struct Game {
+  active_scene: Scene,
 }
 
-impl<'a> Game<'a> {
-  pub(crate) fn new() -> Game<'a> {
+impl Game {
+  pub fn new() -> Game {
     Game {
       active_scene: Scene::new("Main"),
     }
   }
 
-  pub fn active_scene(&self) -> &Scene<'a> {
+  pub fn active_scene(&self) -> &Scene {
     &self.active_scene
   }
 
