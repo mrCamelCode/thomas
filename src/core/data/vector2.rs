@@ -1,3 +1,4 @@
+#[derive(Clone)]
 pub struct Vector2 {
     x: f64,
     y: f64,
@@ -33,6 +34,19 @@ impl Vector2 {
         let diff_y = f64::abs(self.y - other.y);
 
         f64::sqrt(diff_x.powf(2.0) + diff_y.powf(2.0))
+    }
+
+    pub fn add(&mut self, other: &Vector2) {
+        self.x += other.x;
+        self.y += other.y;
+    }
+
+    pub fn x(&self) -> f64 {
+        self.x
+    }
+
+    pub fn y(&self) -> f64 {
+        self.y
     }
 }
 
@@ -70,6 +84,54 @@ mod tests {
             let v2 = Vector2::new(2.0, 4.0);
 
             assert_eq!(v1.distance_from(&v2), f64::sqrt(5.0));
+        }
+    }
+
+    mod add {
+        use super::*;
+
+        #[test]
+        fn no_change() {
+            let mut v1 = Vector2::new(1.0, 2.0);
+            let v2 = Vector2::zero();
+
+            v1.add(&v2);
+
+            assert_eq!(v1.x, 1.0);
+            assert_eq!(v1.y, 2.0);
+        }
+
+        #[test]
+        fn works_with_positive_values() {
+            let mut v1 = Vector2::new(1.0, 2.0);
+            let v2 = Vector2::new(3.0, 4.0);
+
+            v1.add(&v2);
+
+            assert_eq!(v1.x, 4.0);
+            assert_eq!(v1.y, 6.0);
+        }
+
+        #[test]
+        fn works_with_negative_values() {
+            let mut v1 = Vector2::new(1.0, 2.0);
+            let v2 = Vector2::new(-2.0, -7.0);
+
+            v1.add(&v2);
+
+            assert_eq!(v1.x, -1.0);
+            assert_eq!(v1.y, -5.0);
+        }
+
+        #[test]
+        fn works_with_mixed_values() {
+            let mut v1 = Vector2::new(1.0, 2.0);
+            let v2 = Vector2::new(-2.0, 7.0);
+
+            v1.add(&v2);
+
+            assert_eq!(v1.x, -1.0);
+            assert_eq!(v1.y, 9.0);
         }
     }
 }

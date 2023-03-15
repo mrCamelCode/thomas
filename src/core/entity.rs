@@ -1,32 +1,33 @@
-use crate::core::behaviours::Behaviour;
-use crate::core::behaviours::Transform;
+use crate::core::data::Transform;
 
-use super::data::Vector2;
-use super::Scene;
+use super::{behaviours::BehaviourList, Game, Scene};
 
 /// Representation of an entity in the game world. All objects that exist in the game world are Entities.
 pub struct Entity {
     id: String,
     name: String,
     transform: Transform,
-    behaviours: Vec<Box<dyn Behaviour>>,
+    behaviours: BehaviourList,
     is_destroyed: bool,
 }
 
 impl Entity {
-    pub fn create(name: &str, scene: &mut Scene) -> Entity {
-        let entity = Entity {
-            // TODO: Generate a new ID for every entity.
+    pub fn new(name: &str, transform: Transform, behaviours: BehaviourList) -> Self {
+        Entity {
             id: "123".to_string(),
             name: name.to_string(),
-            transform: Transform::new(Vector2::zero()),
-            behaviours: vec![],
+            transform,
+            behaviours,
             is_destroyed: false,
-        };
+        }
+    }
 
-        scene.add_entity(&entity);
+    pub fn add_to_scene(self, scene: &mut Scene) {
+        scene.add_entity(self)
+    }
 
-        entity
+    pub fn add_to_game(self, game: &mut Game) {
+        game.active_scene_as_mut().add_entity(self);
     }
 
     pub fn destroy(&mut self) {
@@ -49,7 +50,7 @@ impl Entity {
         &self.transform
     }
 
-    pub fn behaviours(&self) -> &Vec<Box<dyn Behaviour>> {
+    pub fn behaviours(&self) -> &BehaviourList {
         &self.behaviours
     }
 }
