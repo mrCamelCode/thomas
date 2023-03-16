@@ -1,45 +1,60 @@
-use super::{Scene, Input, Time};
+use super::{renderer::Renderer, Input, Scene, SceneManager, Time};
+
+pub struct GameUtil {
+    input: Input,
+    time: Time,
+    scene_manager: SceneManager,
+}
+
+impl GameUtil {
+    pub fn new() -> Self {
+        GameUtil {
+            input: Input::new(),
+            time: Time::new(),
+            scene_manager: SceneManager::new(Scene::new("default")),
+        }
+    }
+
+    pub fn input(&mut self) -> &mut Input {
+      &mut self.input
+    }
+
+    pub fn time(&mut self) -> &mut Time {
+      &mut self.time
+    }
+
+    pub fn scene_manager(&mut self) -> &mut SceneManager {
+      &mut self.scene_manager
+    }
+}
 
 pub struct Game {
-  active_scene: Scene,
-  input: Input,
-  time: Time,
+    util: GameUtil,
 }
 
 impl Game {
-  pub fn new() -> Game {
-    Game {
-      active_scene: Scene::new("Main"),
-      input: Input::new(),
-      time: Time::new(),
+    pub fn new() -> Game {
+        Game {
+            util: GameUtil::new(),
+        }
     }
-  }
 
-  pub fn active_scene(&self) -> &Scene {
-    &self.active_scene
-  }
-  pub fn active_scene_as_mut(&mut self) -> &mut Scene {
-    &mut self.active_scene
-  }
-
-  pub fn input(&self) -> &Input {
-    &self.input
-  }
-
-  pub fn change_scene(&mut self, new_scene: Scene) {
-    self.active_scene = new_scene;
-  }
-
-  pub fn start(&mut self) {
-    loop {
-      self.input = Input::new();
-      self.time = Time::new();
-
-      self.input.update_keylogger();
-
-      self.time.update();
-
-      // run init and/or update on all behaviours of all entities in the current scene.
+    pub fn util(&mut self) -> &mut GameUtil {
+      &mut self.util
     }
-  }
+
+    pub fn start(&mut self, starting_scene: Scene, renderer: &dyn Renderer) {
+        self.util = GameUtil::new();
+        self.util.scene_manager = SceneManager::new(starting_scene);
+
+        loop {
+            self.util.input.update_keylogger();
+
+            self.util.time.update();
+
+            self.util.scene_manager.active_scene().update_entities();
+
+            renderer.render();
+        }
+    }
 }

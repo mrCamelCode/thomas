@@ -4,23 +4,37 @@ pub struct BehaviourList {
     behaviours: Vec<Box<dyn Behaviour>>,
 }
 
-// TODO: Implement Iterator so you can easily iterate over the behaviours in the list.
-impl BehaviourList {
-    pub fn new(behaviours: Vec<Box<dyn Behaviour>>) -> Self {
-        BehaviourList { behaviours }
-    }
+pub struct BehaviourListIter<'a> {
+    values: &'a Vec<Box<dyn Behaviour>>,
+    index: usize,
+}
 
-    /// Provides the default Behaviour List, which is empty.
-    pub fn default() -> Self {
+impl BehaviourList {
+    pub fn new() -> Self {
         BehaviourList { behaviours: vec![] }
     }
 
-    // TODO: Implement and don't allow a behaviour to be added if there's already a behaviour of that type in the list.
-    pub fn add(&mut self, behaviour: Box<dyn Behaviour>) -> Result<(), ()> {
-      Ok(())
+    pub fn add(&mut self, behaviour: &dyn Behaviour) -> &mut Self {
+        todo!();
+
+        self
     }
 
-    pub fn remove(&self) {
+    pub fn remove(&self, behaviour: &dyn Behaviour) {
+        todo!();
+    }
+}
 
+impl<'a> Iterator for BehaviourListIter<'a> {
+    type Item = &'a Box<dyn Behaviour>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index >= self.values.len() {
+            return None;
+        }
+
+        self.index += 1;
+
+        Some(&self.values[self.index - 1])
     }
 }

@@ -14,21 +14,24 @@ impl Input {
 
     /// Whether the key was pressed down this frame.
     pub fn is_key_down(&self) -> bool {
+        todo!();
         false
     }
 
     /// Whether the key was let up this frame.
     pub fn is_key_up(&self) -> bool {
+        todo!();
         false
     }
 
     /// Whether the key was pressed this frame.
     pub fn is_key_pressed(&self) -> bool {
+        todo!();
         false
     }
 
 
     pub(crate) fn update_keylogger(&mut self) {
-
+        todo!();
     }
 }

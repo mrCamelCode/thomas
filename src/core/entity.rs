@@ -27,7 +27,7 @@ impl Entity {
     }
 
     pub fn add_to_game(self, game: &mut Game) {
-        game.active_scene_as_mut().add_entity(self);
+        game.util().scene_manager().active_scene_as_mut().add_entity(self);
     }
 
     pub fn destroy(&mut self) {

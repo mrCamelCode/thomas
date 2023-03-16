@@ -1,5 +1,5 @@
-mod vector2;
+mod coords;
 mod transform;
 
-pub use vector2::*;
+pub use coords::*;
 pub use transform::*;
