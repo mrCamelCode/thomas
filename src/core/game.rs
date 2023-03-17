@@ -52,7 +52,7 @@ impl Game {
 
             self.util.time.update();
 
-            self.util.scene_manager.active_scene().update_entities();
+            self.util.scene_manager.active_scene().update_entities(&self.util);
 
             renderer.render();
         }

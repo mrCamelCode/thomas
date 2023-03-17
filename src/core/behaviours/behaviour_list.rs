@@ -1,3 +1,5 @@
+use std::error::Error;
+
 use super::Behaviour;
 
 pub struct BehaviourList {
@@ -14,14 +16,16 @@ impl BehaviourList {
         BehaviourList { behaviours: vec![] }
     }
 
-    pub fn add(&mut self, behaviour: &dyn Behaviour) -> &mut Self {
-        todo!();
-
-        self
+    pub fn add(&mut self, behaviour: &dyn Behaviour) -> Result<(), dyn Error> {
+        
     }
 
     pub fn remove(&self, behaviour: &dyn Behaviour) {
         todo!();
+    }
+
+    pub fn iter(&self) -> BehaviourListIter {
+        BehaviourListIter { values: &self.behaviours, index: 0 }
     }
 }
 
