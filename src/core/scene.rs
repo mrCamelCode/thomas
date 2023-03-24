@@ -1,4 +1,4 @@
-use super::{behaviours, Entity, GameUtil};
+use super::{Entity, GameUtil};
 
 /// Houses a slice of a game world. Represents a single renderable section of the world that contains Entities.
 pub struct Scene {
@@ -33,11 +33,9 @@ impl Scene {
         };
     }
 
-    pub(crate) fn update_entities(&self, util: &GameUtil) {
+    pub(crate) fn update_entities(&mut self, util: &GameUtil) {
         self.entities.iter().for_each(|entity| {
-            entity.behaviours().iter().for_each(|behaviour| {
-                behaviour.update(util);
-            })
+            entity.update(util);
         })
     }
 
