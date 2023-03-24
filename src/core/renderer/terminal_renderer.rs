@@ -9,3 +9,9 @@ impl Renderer for TerminalRenderer {
     todo!();
   }
 }
+
+impl TerminalRenderer {
+  pub fn new() -> Self {
+    TerminalRenderer {  }
+  }
+}

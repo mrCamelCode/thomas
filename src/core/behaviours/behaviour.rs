@@ -8,8 +8,8 @@ pub trait Behaviour {
 /// will be performed by Behaviours attached to your various Entities.
 pub trait CustomBehaviour: Behaviour {
     /// Invoked once.
-    fn init(&self) {}
+    fn init(&mut self) {}
 
     /// Invoked on every frame.
-    fn update(&self, _utils: &GameUtil) {}
+    fn update(&mut self, _utils: &GameUtil) {}
 }

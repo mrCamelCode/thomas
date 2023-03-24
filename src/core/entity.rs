@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::core::data::Transform;
 
-use super::{behaviours::BehaviourList, Game, GameUtil, Scene};
+use super::{behaviours::BehaviourList, GameUtil};
 
 /// Representation of an entity in the game world. All objects that exist in the game world are Entities.
 pub struct Entity {
@@ -26,23 +26,12 @@ impl Entity {
         }
     }
 
-    pub fn add_to_scene(self, scene: &mut Scene) {
-        scene.add_entity(self)
-    }
-
-    pub fn add_to_game(self, game: &mut Game) {
-        game.util()
-            .scene_manager()
-            .active_scene_as_mut()
-            .add_entity(self);
-    }
-
     pub fn destroy(&mut self) {
         self.is_destroyed = true;
     }
 
     pub(crate) fn update(&mut self, util: &GameUtil) {
-        self.behaviours.iter().for_each(|behaviour| {
+        self.behaviours.iter_mut().for_each(|behaviour| {
             match self.behaviour_init_map.get(behaviour.name()) {
                 Some(has_been_init) if *has_been_init => behaviour.update(util),
                 _ => {
@@ -78,28 +67,50 @@ impl Entity {
 
 #[cfg(test)]
 mod tests {
-    use thomas_derive::Behaviour;
     use crate::core::behaviours::Behaviour;
+    use thomas_derive::Behaviour;
 
     use crate::core::behaviours::CustomBehaviour;
     use crate::core::input;
 
     use super::*;
 
-    struct MockBehaviour {
-        init_count: u32,
-        update_count: u32, 
+    struct MockFn {
+        times_called: u32,
+    }
+    impl MockFn {
+        pub fn new() -> Self {
+            MockFn { times_called: 0 }
+        }
+
+        pub fn call(&mut self) {
+            self.times_called += 1;
+        }
     }
 
+    struct MockBehaviour {
+        mock_init: MockFn,
+        mock_update: MockFn,
+    }
+    impl MockBehaviour {
+        fn new() -> Self {
+            MockBehaviour {
+                mock_init: MockFn::new(),
+                mock_update: MockFn::new(),
+            }
+        }
+    }
     impl Behaviour for MockBehaviour {
         fn name(&self) -> &'static str {
             "MyBehaviour"
         }
     }
-
     impl CustomBehaviour for MockBehaviour {
-        fn init(&self) {
-            
+        fn init(&mut self) {
+            self.mock_init.call();
+        }
+        fn update(&mut self, _utils: &GameUtil) {
+            self.mock_update.call();
         }
     }
 
@@ -107,14 +118,13 @@ mod tests {
         use super::*;
 
         #[test]
-        fn calls_init_when_it_has_not_been_called() {
+        fn calls_init_when_it_has_not_been_called_yet() {
+            let mut entity = Entity::new("mock entity", Transform::default(), BehaviourList::new());
+            let behaviour = MockBehaviour::new();
 
         }
 
         #[test]
-        fn calls_update_when_behaviour_has_been_init() {
-
-        }
-
+        fn calls_update_when_behaviour_has_been_init() {}
     }
 }

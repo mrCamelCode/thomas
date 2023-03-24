@@ -1,4 +1,5 @@
 use super::CustomBehaviour;
+use std::slice::IterMut;
 pub struct BehaviourList {
     behaviours: Vec<Box<dyn CustomBehaviour>>,
 }
@@ -9,8 +10,10 @@ pub struct BehaviourListIter<'a> {
 }
 
 impl BehaviourList {
-    pub fn new() -> Self {
-        BehaviourList { behaviours: vec![] }
+    pub fn new(behaviours: Vec<&dyn CustomBehaviour>) -> Self {
+        BehaviourList {
+            behaviours: behaviours.into_iter().map(|b| Box::new(*b)).collect(),
+        }
     }
 
     pub fn add(&mut self, behaviour: Box<dyn CustomBehaviour>) -> Result<(), ()> {
@@ -19,11 +22,11 @@ impl BehaviourList {
 
             return Ok(());
         }
-        
+
         Err(())
     }
 
-    pub fn remove(&self, behaviour: &dyn CustomBehaviour) {
+    pub fn remove(&self, behaviour: Box<dyn CustomBehaviour>) {
         todo!();
     }
 
@@ -32,6 +35,10 @@ impl BehaviourList {
             values: &self.behaviours,
             index: 0,
         }
+    }
+
+    pub(crate) fn iter_mut(&mut self) -> IterMut<'_, Box<dyn CustomBehaviour>> {
+        self.behaviours.iter_mut()
     }
 }
 

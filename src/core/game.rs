@@ -1,9 +1,10 @@
-use super::{renderer::Renderer, Input, Scene, SceneManager, Time};
+use std::rc::Rc;
+
+use super::{renderer::{Renderer, TerminalRenderer}, Input, Scene, SceneManager, Time};
 
 pub struct GameUtil {
     input: Input,
     time: Time,
-    scene_manager: SceneManager,
 }
 
 impl GameUtil {
@@ -11,48 +12,34 @@ impl GameUtil {
         GameUtil {
             input: Input::new(),
             time: Time::new(),
-            scene_manager: SceneManager::new(Scene::new("default")),
         }
     }
 
     pub fn input(&mut self) -> &mut Input {
-      &mut self.input
+        &mut self.input
     }
 
     pub fn time(&mut self) -> &mut Time {
-      &mut self.time
-    }
-
-    pub fn scene_manager(&mut self) -> &mut SceneManager {
-      &mut self.scene_manager
+        &mut self.time
     }
 }
 
-pub struct Game {
-    util: GameUtil,
-}
+pub struct Game;
 
 impl Game {
     pub fn new() -> Game {
-        Game {
-            util: GameUtil::new(),
-        }
+        Game {}
     }
 
-    pub fn util(&mut self) -> &mut GameUtil {
-      &mut self.util
-    }
-
-    pub fn start(&mut self, starting_scene: Scene, renderer: &dyn Renderer) {
-        self.util = GameUtil::new();
-        self.util.scene_manager = SceneManager::new(starting_scene);
+    pub fn start(&mut self, scene_manager: &mut SceneManager, renderer: Box<dyn Renderer>) {
+        let mut util = GameUtil::new();
 
         loop {
-            self.util.input.update_keylogger();
+            util.input.update_keylogger();
 
-            self.util.time.update();
+            util.time.update();
 
-            self.util.scene_manager.active_scene().update_entities(&self.util);
+            scene_manager.active_scene_as_mut().update_entities(&util);
 
             renderer.render();
         }

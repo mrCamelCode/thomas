@@ -1,4 +1,6 @@
-use super::{Entity, GameUtil};
+use std::rc::Weak;
+
+use super::{Entity, GameUtil, SceneManager};
 
 /// Houses a slice of a game world. Represents a single renderable section of the world that contains Entities.
 pub struct Scene {
@@ -26,15 +28,16 @@ impl Scene {
         self.entities.push(Box::new(entity));
     }
 
-    // TODO: Call this when an entity that is_destroyed is encountered during update_entities
-    fn remove_entity(&mut self, entity: Entity) {
+    fn remove_entity(&mut self, entity: &Entity) {
         if let Some(found_index) = self.entities.iter().position(|e| e.id() == entity.id()) {
             self.entities.swap_remove(found_index);
         };
     }
 
     pub(crate) fn update_entities(&mut self, util: &GameUtil) {
-        self.entities.iter().for_each(|entity| {
+        self.entities.retain(|entity| !entity.is_destroyed());
+
+        self.entities.iter_mut().for_each(|entity| {
             entity.update(util);
         })
     }

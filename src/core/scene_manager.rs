@@ -12,7 +12,7 @@ impl SceneManager {
     pub fn active_scene(&self) -> &Scene {
         &self.active_scene
     }
-    pub fn active_scene_as_mut(&mut self) -> &mut Scene {
+    pub(crate) fn active_scene_as_mut(&mut self) -> &mut Scene {
         &mut self.active_scene
     }
 
