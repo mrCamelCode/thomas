@@ -22,12 +22,12 @@ impl BehaviourList {
     /// Gets the `CustomBehaviour` by name. The `CustomBehaviour`'s name is equal to
     /// your behaviour's name. If there was no `CustomBehaviour` by that name in the
     /// list, `None` will be returned.
-    /// 
+    ///
     /// # Examples
     /// ```
     /// use thomas::core::{BehaviourList, CustomBehaviour, Behaviour};
     /// use thomas_derive::*;
-    /// 
+    ///
     /// #[derive(Behaviour)]
     /// struct MyBehaviour;
     /// impl MyBehaviour {
@@ -36,9 +36,9 @@ impl BehaviourList {
     ///     }
     /// }
     /// impl CustomBehaviour for MyBehaviour {}
-    /// 
+    ///
     /// let list = BehaviourList::from(vec![Box::new(MyBehaviour::new())]);
-    /// 
+    ///
     /// let my_behaviour: &MyBehaviour = list.get("MyBehaviour").unwrap();
     /// ```
     pub fn get<T>(&self, name: &str) -> Option<&T>
@@ -62,8 +62,8 @@ impl BehaviourList {
         Err(())
     }
 
-    pub fn remove(&mut self, behaviour: Box<dyn CustomBehaviour>) {
-        self.behaviours.retain(|b| b.name() != behaviour.name());
+    pub fn remove(&mut self, behaviour_name: &str) {
+        self.behaviours.retain(|b| b.name() != behaviour_name);
     }
 
     pub fn iter(&self) -> BehaviourListIter {
@@ -71,6 +71,10 @@ impl BehaviourList {
             values: &self.behaviours,
             index: 0,
         }
+    }
+
+    pub fn as_mut(&mut self) -> &mut Self {
+        self
     }
 
     pub(crate) fn iter_mut(&mut self) -> IterMut<'_, Box<dyn CustomBehaviour>> {

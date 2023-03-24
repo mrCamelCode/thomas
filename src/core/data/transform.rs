@@ -20,10 +20,14 @@ impl Transform {
   }
 
   pub fn move_by(&mut self, amount: &Coords) {
-    self.coords.add(amount);
+    self.coords += *amount;
   }
 
   pub fn move_to(&mut self, new_position: &Coords) {
     self.coords = new_position.clone();
+  }
+
+  pub fn as_mut(&mut self) -> &mut Self {
+    self
   }
 }

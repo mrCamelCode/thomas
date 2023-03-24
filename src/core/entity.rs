@@ -1,8 +1,17 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use crate::core::data::Transform;
 
 use super::{behaviours::BehaviourList, GameUtil};
+
+fn get_id() -> usize {
+    static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    ID_COUNTER.fetch_add(1, Ordering::Relaxed)
+}
 
 /// Representation of an entity in the game world. All objects that exist in the game world are Entities.
 pub struct Entity {
@@ -17,7 +26,7 @@ pub struct Entity {
 impl Entity {
     pub fn new(name: &str, transform: Transform, behaviours: BehaviourList) -> Self {
         Entity {
-            id: "123".to_string(),
+            id: get_id().to_string(),
             name: name.to_string(),
             transform,
             behaviours,
@@ -56,12 +65,12 @@ impl Entity {
         self.is_destroyed
     }
 
-    pub fn transform(&self) -> &Transform {
-        &self.transform
+    pub fn transform(&mut self) -> &mut Transform {
+        self.transform.as_mut()
     }
 
-    pub fn behaviours(&self) -> &BehaviourList {
-        &self.behaviours
+    pub fn behaviours(&mut self) -> &mut BehaviourList {
+        self.behaviours.as_mut()
     }
 }
 

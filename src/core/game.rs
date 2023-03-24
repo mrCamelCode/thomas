@@ -1,6 +1,4 @@
-use std::rc::Rc;
-
-use super::{renderer::{Renderer, TerminalRenderer}, Input, Scene, SceneManager, Time};
+use super::{renderer::Renderer, Input, SceneManager, Time, Scene};
 
 pub struct GameUtil {
     input: Input,
@@ -15,12 +13,12 @@ impl GameUtil {
         }
     }
 
-    pub fn input(&mut self) -> &mut Input {
-        &mut self.input
+    pub fn input(&mut self) -> &Input {
+        &self.input
     }
 
-    pub fn time(&mut self) -> &mut Time {
-        &mut self.time
+    pub fn time(&mut self) -> &Time {
+        &self.time
     }
 }
 
@@ -31,12 +29,15 @@ impl Game {
         Game {}
     }
 
-    pub fn start(&mut self, scene_manager: &mut SceneManager, renderer: Box<dyn Renderer>) {
+    pub fn start(&mut self, starting_scene: Scene, renderer: Box<dyn Renderer>) {
+        // TODO: Gotta think of some way to allow behaviours to access the game's scene manager instance mutably
+        // so behaviours can trigger scene changes.
+
         let mut util = GameUtil::new();
+        let mut scene_manager = SceneManager::new(starting_scene);
 
         loop {
-            util.input.update_keylogger();
-
+            util.input.update();
             util.time.update();
 
             scene_manager.active_scene_as_mut().update_entities(&util);

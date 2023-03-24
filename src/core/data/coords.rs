@@ -1,4 +1,6 @@
-#[derive(Clone)]
+use std::ops::{Add, AddAssign, Sub, SubAssign};
+
+#[derive(Clone, Copy)]
 pub struct Coords {
     x: f64,
     y: f64,
@@ -33,9 +35,15 @@ impl Coords {
     pub fn forward() -> Coords {
         Coords::new(0.0, 0.0, -1.0)
     }
+    pub fn forwards() -> Coords {
+        Coords::forward()
+    }
 
     pub fn backward() -> Coords {
         Coords::new(0.0, 0.0, 1.0)
+    }
+    pub fn backwards() -> Coords {
+        Coords::backward()
     }
 
     pub fn distance_from_2d(&self, other: &Coords) -> f64 {
@@ -43,12 +51,6 @@ impl Coords {
         let diff_y = f64::abs(self.y - other.y);
 
         f64::sqrt(diff_x.powf(2.0) + diff_y.powf(2.0))
-    }
-
-    pub fn add(&mut self, other: &Coords) {
-        self.x += other.x;
-        self.y += other.y;
-        self.z += other.z;
     }
 
     pub fn x(&self) -> f64 {
@@ -65,6 +67,47 @@ impl Coords {
 
     pub fn values(&self) -> (f64, f64, f64) {
         (self.x, self.y, self.z)
+    }
+}
+
+impl Add for Coords {
+    type Output = Coords;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Coords {
+            x: self.x + rhs.x,
+            y: self.y + rhs.y,
+            z: self.z + rhs.z,
+        }
+    }
+}
+
+impl Sub for Coords {
+    type Output = Coords;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Coords {
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
+            z: self.z - rhs.z,
+        }
+    }
+}
+
+impl AddAssign for Coords {
+    fn add_assign(&mut self, rhs: Self) {
+        self.x += rhs.x;
+        self.y += rhs.y;
+        self.z += rhs.z;
+    }
+}
+
+impl SubAssign for Coords {
+    fn sub_assign(&mut self, rhs: Self) {
+        self.x -= rhs.x;
+        self.y -= rhs.y;
+        self.z -= rhs.z;
+ 
     }
 }
 
@@ -110,49 +153,100 @@ mod tests {
 
         #[test]
         fn no_change() {
-            let mut v1 = Coords::new(1.0, 2.0, 0.0);
+            let v1 = Coords::new(1.0, 2.0, 0.0);
             let v2 = Coords::zero();
 
-            v1.add(&v2);
+            let v3 = v1 + v2;
 
-            assert_eq!(v1.x, 1.0);
-            assert_eq!(v1.y, 2.0);
+            assert_eq!(v3.x, 1.0);
+            assert_eq!(v3.y, 2.0);
         }
 
         #[test]
         fn works_with_positive_values() {
-            let mut v1 = Coords::new(1.0, 2.0, 0.0);
+            let v1 = Coords::new(1.0, 2.0, 0.0);
             let v2 = Coords::new(3.0, 4.0, 1.0);
 
-            v1.add(&v2);
+            let v3 = v1 + v2;
 
-            assert_eq!(v1.x, 4.0);
-            assert_eq!(v1.y, 6.0);
-            assert_eq!(v1.z, 1.0);
+            assert_eq!(v3.x, 4.0);
+            assert_eq!(v3.y, 6.0);
+            assert_eq!(v3.z, 1.0);
         }
 
         #[test]
         fn works_with_negative_values() {
-            let mut v1 = Coords::new(1.0, 2.0, 3.0);
+            let v1 = Coords::new(1.0, 2.0, 3.0);
             let v2 = Coords::new(-2.0, -7.0, -3.0);
 
-            v1.add(&v2);
+            let v3 = v1 + v2;
 
-            assert_eq!(v1.x, -1.0);
-            assert_eq!(v1.y, -5.0);
-            assert_eq!(v1.z, 0.0);
+            assert_eq!(v3.x, -1.0);
+            assert_eq!(v3.y, -5.0);
+            assert_eq!(v3.z, 0.0);
         }
 
         #[test]
         fn works_with_mixed_values() {
-            let mut v1 = Coords::new(1.0, 2.0, 0.0);
+            let v1 = Coords::new(1.0, 2.0, 0.0);
             let v2 = Coords::new(-2.0, 7.0, -2.0);
 
-            v1.add(&v2);
+            let v3 = v1 + v2;
 
-            assert_eq!(v1.x, -1.0);
-            assert_eq!(v1.y, 9.0);
-            assert_eq!(v1.z, -2.0);
+            assert_eq!(v3.x, -1.0);
+            assert_eq!(v3.y, 9.0);
+            assert_eq!(v3.z, -2.0);
+        }
+    }
+
+    mod subtract {
+        use super::*;
+
+        #[test]
+        fn no_change() {
+            let v1 = Coords::new(1.0, 2.0, 0.0);
+            let v2 = Coords::zero();
+
+            let v3 = v1 - v2;
+
+            assert_eq!(v3.x, 1.0);
+            assert_eq!(v3.y, 2.0);
+        }
+
+        #[test]
+        fn works_with_positive_values() {
+            let v1 = Coords::new(1.0, 2.0, 0.0);
+            let v2 = Coords::new(3.0, 4.0, 1.0);
+
+            let v3 = v1 - v2;
+
+            assert_eq!(v3.x, -2.0);
+            assert_eq!(v3.y, -2.0);
+            assert_eq!(v3.z, -1.0);
+        }
+
+        #[test]
+        fn works_with_negative_values() {
+            let v1 = Coords::new(1.0, 2.0, 3.0);
+            let v2 = Coords::new(-2.0, -7.0, -3.0);
+
+            let v3 = v1 - v2;
+
+            assert_eq!(v3.x, 3.0);
+            assert_eq!(v3.y, 9.0);
+            assert_eq!(v3.z, 6.0);
+        }
+
+        #[test]
+        fn works_with_mixed_values() {
+            let v1 = Coords::new(1.0, 2.0, 0.0);
+            let v2 = Coords::new(-2.0, 7.0, -2.0);
+
+            let v3 = v1 - v2;
+
+            assert_eq!(v3.x, 3.0);
+            assert_eq!(v3.y, -5.0);
+            assert_eq!(v3.z, 2.0);
         }
     }
 

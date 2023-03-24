@@ -28,7 +28,7 @@ impl Scene {
         self.entities.push(Box::new(entity));
     }
 
-    fn remove_entity(&mut self, entity: &Entity) {
+    pub fn remove_entity(&mut self, entity: &Entity) {
         if let Some(found_index) = self.entities.iter().position(|e| e.id() == entity.id()) {
             self.entities.swap_remove(found_index);
         };
@@ -44,5 +44,9 @@ impl Scene {
 
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub fn as_mut(&mut self) -> &mut Self {
+        self
     }
 }
