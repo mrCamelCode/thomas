@@ -17,3 +17,5 @@ pub use game::*;
 pub use input::*;
 pub use time::*;
 pub use scene_manager::*;
+
+pub use behaviours::*;

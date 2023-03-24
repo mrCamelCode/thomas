@@ -1,5 +1,6 @@
 use super::CustomBehaviour;
 use std::slice::IterMut;
+
 pub struct BehaviourList {
     behaviours: Vec<Box<dyn CustomBehaviour>>,
 }
@@ -10,10 +11,45 @@ pub struct BehaviourListIter<'a> {
 }
 
 impl BehaviourList {
-    pub fn new(behaviours: Vec<&dyn CustomBehaviour>) -> Self {
-        BehaviourList {
-            behaviours: behaviours.into_iter().map(|b| Box::new(*b)).collect(),
+    pub fn new() -> Self {
+        BehaviourList { behaviours: vec![] }
+    }
+
+    pub fn from(behaviours: Vec<Box<dyn CustomBehaviour>>) -> Self {
+        BehaviourList { behaviours }
+    }
+
+    /// Gets the `CustomBehaviour` by name. The `CustomBehaviour`'s name is equal to
+    /// your behaviour's name. If there was no `CustomBehaviour` by that name in the
+    /// list, `None` will be returned.
+    /// 
+    /// # Examples
+    /// ```
+    /// use thomas::core::{BehaviourList, CustomBehaviour, Behaviour};
+    /// use thomas_derive::*;
+    /// 
+    /// #[derive(Behaviour)]
+    /// struct MyBehaviour;
+    /// impl MyBehaviour {
+    ///     fn new() -> Self {
+    ///         MyBehaviour { }
+    ///     }
+    /// }
+    /// impl CustomBehaviour for MyBehaviour {}
+    /// 
+    /// let list = BehaviourList::from(vec![Box::new(MyBehaviour::new())]);
+    /// 
+    /// let my_behaviour: &MyBehaviour = list.get("MyBehaviour").unwrap();
+    /// ```
+    pub fn get<T>(&self, name: &str) -> Option<&T>
+    where
+        T: CustomBehaviour + 'static,
+    {
+        if let Some(behaviour) = self.behaviours.iter().find(|b| b.name() == name) {
+            return behaviour.as_any().downcast_ref::<T>();
         }
+
+        None
     }
 
     pub fn add(&mut self, behaviour: Box<dyn CustomBehaviour>) -> Result<(), ()> {
@@ -26,8 +62,8 @@ impl BehaviourList {
         Err(())
     }
 
-    pub fn remove(&self, behaviour: Box<dyn CustomBehaviour>) {
-        todo!();
+    pub fn remove(&mut self, behaviour: Box<dyn CustomBehaviour>) {
+        self.behaviours.retain(|b| b.name() != behaviour.name());
     }
 
     pub fn iter(&self) -> BehaviourListIter {

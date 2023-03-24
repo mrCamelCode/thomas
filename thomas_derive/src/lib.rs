@@ -15,9 +15,14 @@ pub fn behaviour_macro_derive(input: TokenStream) -> TokenStream {
 fn impl_behaviour_macro(ast: &syn::DeriveInput) -> TokenStream {
     let struct_name = &ast.ident;
     let gen = quote! {
+        use std::any::{ Any as ThomasAny };
+
         impl Behaviour for #struct_name {
             fn name(&self) -> &'static str {
                 stringify!(#struct_name)
+            }
+            fn as_any(&self) -> &dyn ThomasAny {
+                self
             }
         }
     };
