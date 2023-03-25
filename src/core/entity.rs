@@ -128,6 +128,23 @@ mod tests {
         }
     }
 
+    mod id_generation {
+        use super::*;
+
+        #[test]
+        fn unique_id_made_for_each_entity() {
+            let [e1, e2, e3] = [
+                Entity::new("e1", Transform::default(), BehaviourList::new()),
+                Entity::new("e2", Transform::default(), BehaviourList::new()),
+                Entity::new("e3", Transform::default(), BehaviourList::new()),
+            ];
+
+            assert_ne!(e1.id, e2.id);
+            assert_ne!(e1.id, e3.id);
+            assert_ne!(e2.id, e3.id);
+        }
+    }
+
     mod update {
         use super::*;
 
