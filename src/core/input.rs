@@ -1,8 +1,13 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    io,
+    sync::mpsc::{self, Receiver},
+    thread,
+};
 
+// TODO: The crate device_query should enable this service's existence.
 pub struct Input {
-    // TODO: This will likely have to store more information than a bool.
-    keylogger: HashMap<String, bool>,
+    keylogger: HashMap<String, bool>
 }
 
 impl Input {
