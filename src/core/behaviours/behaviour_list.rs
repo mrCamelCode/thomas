@@ -1,22 +1,30 @@
 use super::CustomBehaviour;
-use std::slice::IterMut;
+use std::collections::{
+    hash_map::{Values, ValuesMut},
+    HashMap,
+};
 
 pub struct BehaviourList {
-    behaviours: Vec<Box<dyn CustomBehaviour>>,
-}
-
-pub struct BehaviourListIter<'a> {
-    values: &'a Vec<Box<dyn CustomBehaviour>>,
-    index: usize,
+    behaviours: HashMap<String, Box<dyn CustomBehaviour>>,
 }
 
 impl BehaviourList {
     pub fn new() -> Self {
-        BehaviourList { behaviours: vec![] }
+        BehaviourList {
+            behaviours: HashMap::new(),
+        }
     }
 
     pub fn from(behaviours: Vec<Box<dyn CustomBehaviour>>) -> Self {
-        BehaviourList { behaviours }
+        let mut behaviours_map = HashMap::new();
+
+        behaviours.into_iter().for_each(|behaviour| {
+            behaviours_map.insert(behaviour.name().to_string(), behaviour);
+        });
+
+        BehaviourList {
+            behaviours: behaviours_map,
+        }
     }
 
     /// Gets the `CustomBehaviour` by name. The `CustomBehaviour`'s name is equal to
@@ -45,7 +53,7 @@ impl BehaviourList {
     where
         T: CustomBehaviour + 'static,
     {
-        if let Some(behaviour) = self.behaviours.iter().find(|b| b.name() == name) {
+        if let Some(behaviour) = self.behaviours.get(name) {
             return behaviour.as_any().downcast_ref::<T>();
         }
 
@@ -53,8 +61,9 @@ impl BehaviourList {
     }
 
     pub fn add(&mut self, behaviour: Box<dyn CustomBehaviour>) -> Result<(), ()> {
-        if !self.behaviours.iter().any(|b| b.name() == behaviour.name()) {
-            self.behaviours.push(behaviour);
+        if !self.behaviours.contains_key(behaviour.name()) {
+            self.behaviours
+                .insert(behaviour.name().to_string(), behaviour);
 
             return Ok(());
         }
@@ -63,35 +72,18 @@ impl BehaviourList {
     }
 
     pub fn remove(&mut self, behaviour_name: &str) {
-        self.behaviours.retain(|b| b.name() != behaviour_name);
+        self.behaviours.remove(behaviour_name);
     }
 
-    pub fn iter(&self) -> BehaviourListIter {
-        BehaviourListIter {
-            values: &self.behaviours,
-            index: 0,
-        }
+    pub fn iter(&self) -> Values<'_, String, Box<dyn CustomBehaviour>> {
+        self.behaviours.values()
     }
 
     pub fn as_mut(&mut self) -> &mut Self {
         self
     }
 
-    pub(crate) fn iter_mut(&mut self) -> IterMut<'_, Box<dyn CustomBehaviour>> {
-        self.behaviours.iter_mut()
-    }
-}
-
-impl<'a> Iterator for BehaviourListIter<'a> {
-    type Item = &'a Box<dyn CustomBehaviour>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.index >= self.values.len() {
-            return None;
-        }
-
-        self.index += 1;
-
-        Some(&self.values[self.index - 1])
+    pub(crate) fn iter_mut(&mut self) -> ValuesMut<'_, String, Box<dyn CustomBehaviour>> {
+        self.behaviours.values_mut()
     }
 }
