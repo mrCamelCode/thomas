@@ -49,6 +49,8 @@ impl BehaviourList {
     ///
     /// let my_behaviour: &MyBehaviour = list.get("MyBehaviour").unwrap();
     /// ```
+    // TODO: Potentially write a macro that extracts a behaviour's name into a string so they don't have to call this
+    // method with a string literal all the time.
     pub fn get<T>(&self, name: &str) -> Option<&T>
     where
         T: CustomBehaviour + 'static,
