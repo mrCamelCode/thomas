@@ -53,6 +53,14 @@ impl Coords {
         f64::sqrt(diff_x.powf(2.0) + diff_y.powf(2.0))
     }
 
+    pub fn rounded(&self) -> Coords {
+        Coords {
+            x: self.x.round(),
+            y: self.y.round(),
+            z: self.z.round(),
+        }
+    }
+
     pub fn x(&self) -> f64 {
         self.x
     }

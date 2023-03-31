@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::core::data::Transform;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 fn get_id() -> usize {
     static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -41,7 +41,10 @@ impl Entity {
         self.is_destroyed
     }
 
-    pub fn transform(&mut self) -> &mut Transform {
+    pub fn transform(&self) -> &Transform {
+        &self.transform
+    }
+    pub fn transform_mut(&mut self) -> &mut Transform {
         self.transform.as_mut()
     }
 }

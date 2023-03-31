@@ -45,7 +45,7 @@ impl Game {
             self.entity_behaviour_map
                 .update(&self.game_services, &mut self.command_queue);
 
-            renderer.render();
+            renderer.render(scene_manager.active_scene());
 
             self.command_queue.handle();
         }
