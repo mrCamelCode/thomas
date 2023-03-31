@@ -1,6 +1,6 @@
 use crate::core::data::Coords;
 
-/// Basic behaviour that stores positional information for an Entity.
+/// Basic structure that stores positional information for an Entity.
 pub struct Transform {
   coords: Coords,
 }

@@ -17,7 +17,6 @@ pub struct Input {
     keylogger: HashMap<Keycode, KeyStateData>,
     device_state: DeviceState,
 }
-
 impl Input {
     pub fn new() -> Self {
         Input {
