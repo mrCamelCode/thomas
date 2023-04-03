@@ -45,7 +45,11 @@ impl Game {
             self.entity_behaviour_map
                 .update(&self.game_services, &mut self.command_queue);
 
-            renderer.render(scene_manager.active_scene());
+            renderer.render(
+                self.entity_behaviour_map
+                    .entries()
+                    .collect::<Vec<(&Entity, &BehaviourList)>>(),
+            );
 
             self.command_queue.handle();
         }

@@ -1,15 +1,42 @@
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
 #[derive(Clone, Copy)]
+pub struct IntCoords {
+    x: i64,
+    y: i64,
+    z: i64,
+}
+impl IntCoords {
+    pub fn new(x: i64, y: i64, z: i64) -> Self {
+        Self { x, y, z }
+    }
+
+    pub fn x(&self) -> i64 {
+        self.x
+    }
+
+    pub fn y(&self) -> i64 {
+        self.y
+    }
+
+    pub fn z(&self) -> i64 {
+        self.z
+    }
+
+    pub fn values(&self) -> (i64, i64, i64) {
+        (self.x, self.y, self.z)
+    }
+}
+
+#[derive(Clone, Copy)]
 pub struct Coords {
     x: f64,
     y: f64,
     z: f64,
 }
-
 impl Coords {
-    pub fn new(x: f64, y: f64, z: f64) -> Coords {
-        Coords { x, y, z }
+    pub fn new(x: f64, y: f64, z: f64) -> Self {
+        Self { x, y, z }
     }
 
     pub fn zero() -> Coords {
@@ -53,11 +80,11 @@ impl Coords {
         f64::sqrt(diff_x.powf(2.0) + diff_y.powf(2.0))
     }
 
-    pub fn rounded(&self) -> Coords {
-        Coords {
-            x: self.x.round(),
-            y: self.y.round(),
-            z: self.z.round(),
+    pub fn rounded(&self) -> IntCoords {
+        IntCoords {
+            x: self.x.round() as i64,
+            y: self.y.round() as i64,
+            z: self.z.round() as i64,
         }
     }
 
@@ -115,7 +142,6 @@ impl SubAssign for Coords {
         self.x -= rhs.x;
         self.y -= rhs.y;
         self.z -= rhs.z;
- 
     }
 }
 

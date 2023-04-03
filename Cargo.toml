@@ -9,4 +9,3 @@ edition = "2021"
 device_query = "1.1.2"
 mockall = "0.11.3"
 thomas_derive = { path = "./thomas_derive" }
-thomas_proc = { path = "./thomas_proc" }

@@ -1,5 +1,5 @@
-use crate::core::Scene;
+use crate::core::{BehaviourList, Entity};
 
 pub trait Renderer {
-  fn render(&self, scene: &Scene);
+    fn render(&self, entities: Vec<(&Entity, &BehaviourList)>);
 }

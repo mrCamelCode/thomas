@@ -1,7 +1,13 @@
-use crate::core::{Entity, GameCommand, GameCommandQueue, GameServices};
+use crate::core::{Entity, GameCommandQueue, GameServices};
 use std::any::Any;
 use std::collections::HashMap;
 
+#[macro_export]
+macro_rules! get_behaviour_name {
+    ($name:ty) => {
+        stringify!($name)
+    };
+}
 pub(crate) struct EntityBehaviourMap {
     map: HashMap<Entity, EntityBehaviourMapValue>,
 }
@@ -21,6 +27,12 @@ impl EntityBehaviourMap {
             val.entity_behaviour_list
                 .update(&mut val.entity, game_services, game_commands)
         });
+    }
+
+    pub fn entries(&self) -> impl Iterator<Item = (&Entity, &BehaviourList)> {
+        self.map.iter().map(|(entity, behaviour_map_value)| {
+            (entity, &behaviour_map_value.entity_behaviour_list)
+        })
     }
 }
 

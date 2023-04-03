@@ -1,19 +1,19 @@
 #[derive(Clone, Copy)]
 pub struct Dimensions2d {
-  height: usize,
-  width: usize,
+    height: u64,
+    width: u64,
 }
 
 impl Dimensions2d {
-  pub fn new(height: usize, width: usize) -> Self {
-    Dimensions2d { height, width }
-  }
+    pub fn new(height: u64, width: u64) -> Self {
+        Dimensions2d { height, width }
+    }
 
-  pub fn height(&self) -> usize {
-    self.height
-  }
+    pub fn height(&self) -> u64 {
+        self.height
+    }
 
-  pub fn width(&self) -> usize {
-    self.width
-  }
+    pub fn width(&self) -> u64 {
+        self.width
+    }
 }

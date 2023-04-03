@@ -15,11 +15,9 @@ pub fn behaviour_macro_derive(input: TokenStream) -> TokenStream {
 fn impl_behaviour_macro(ast: &syn::DeriveInput) -> TokenStream {
     let struct_name = &ast.ident;
     let gen = quote! {
-        use thomas::{Behaviour as ThomasBehaviour};
         use std::any::{ Any as ThomasAny };
 
-        // TODO: Double check that this works after adding the use and the ThomasBehaviour alias.
-        impl ThomasBehaviour for #struct_name {
+        impl Behaviour for #struct_name {
             fn name(&self) -> &'static str {
                 stringify!(#struct_name)
             }
