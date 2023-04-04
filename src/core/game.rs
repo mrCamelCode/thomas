@@ -1,3 +1,5 @@
+use device_query::Keycode;
+
 use super::{renderer::Renderer, BehaviourList, Entity, EntityBehaviourMap, Input, Time};
 
 pub struct GameServices {
@@ -38,9 +40,15 @@ impl Game {
     pub fn add_entity(&mut self, entity: Entity, behaviours: BehaviourList) {}
 
     pub fn start(&mut self, renderer: &dyn Renderer) {
+        renderer.init();
+
         loop {
             self.game_services.input.update();
             self.game_services.time.update();
+
+            if self.game_services.input.is_key_pressed(&Keycode::Escape) {
+                break;
+            }
 
             self.entity_behaviour_map
                 .update(&self.game_services, &mut self.command_queue);
@@ -53,6 +61,8 @@ impl Game {
 
             self.command_queue.handle();
         }
+
+        renderer.cleanup();
     }
 }
 

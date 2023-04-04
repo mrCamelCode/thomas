@@ -9,13 +9,23 @@ macro_rules! get_behaviour_name {
     };
 }
 pub(crate) struct EntityBehaviourMap {
-    map: HashMap<Entity, EntityBehaviourMapValue>,
+    map: HashMap<String, EntityBehaviourMapValue>,
 }
 impl EntityBehaviourMap {
     pub(crate) fn new() -> Self {
         Self {
             map: HashMap::new(),
         }
+    }
+
+    pub(crate) fn add(&mut self, entity: Entity, behaviours: BehaviourList) {
+        self.map.insert(
+            entity.id().to_string(),
+            EntityBehaviourMapValue {
+                entity,
+                entity_behaviour_list: behaviours,
+            },
+        );
     }
 
     pub(crate) fn update(
@@ -30,8 +40,11 @@ impl EntityBehaviourMap {
     }
 
     pub fn entries(&self) -> impl Iterator<Item = (&Entity, &BehaviourList)> {
-        self.map.iter().map(|(entity, behaviour_map_value)| {
-            (entity, &behaviour_map_value.entity_behaviour_list)
+        self.map.iter().map(|(_, behaviour_map_value)| {
+            (
+                &behaviour_map_value.entity,
+                &behaviour_map_value.entity_behaviour_list,
+            )
         })
     }
 }
@@ -149,6 +162,185 @@ impl<'a> BehaviourUtils<'a> {
             entity,
             game_services,
             game_commands,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mock_fn::MockFn;
+    use thomas_derive::Behaviour;
+
+    #[derive(Behaviour)]
+    struct MockBehaviour {
+        mock_update: MockFn,
+        mock_init: MockFn,
+    }
+    impl MockBehaviour {
+        pub fn new() -> Self {
+            Self {
+                mock_init: MockFn::new(),
+                mock_update: MockFn::new(),
+            }
+        }
+    }
+    impl CustomBehaviour for MockBehaviour {
+        fn update(&mut self, _utils: BehaviourUtils) {
+            self.mock_update.call();
+        }
+
+        fn init(&mut self, _utils: BehaviourUtils) {
+            self.mock_init.call();
+        }
+    }
+
+    mod get_behaviour_name {
+        #[test]
+        fn name_is_correct() {
+            assert_eq!(get_behaviour_name!(MockBehaviour), "MockBehaviour");
+        }
+    }
+
+    mod entity_behaviour_map {
+        use super::*;
+
+        mod update {
+            use crate::core::data::Transform;
+
+            use super::*;
+
+            fn make_mock() -> EntityBehaviourMap {
+                let mut map = EntityBehaviourMap::new();
+
+                map.add(
+                    Entity::new("Test Entity 1", Transform::default()),
+                    BehaviourList::from(vec![Box::new(MockBehaviour::new())]),
+                );
+                map.add(
+                    Entity::new("Test Entity 2", Transform::default()),
+                    BehaviourList::from(vec![Box::new(MockBehaviour::new())]),
+                );
+                map.add(
+                    Entity::new("Test Entity 3", Transform::default()),
+                    BehaviourList::from(vec![Box::new(MockBehaviour::new())]),
+                );
+
+                map
+            }
+
+            fn get_mock_behaviour_from_mock_map(map: &EntityBehaviourMap) -> &MockBehaviour {
+                let ids: Vec<String> = map
+                    .map
+                    .values()
+                    .map(|val| val.entity.id().to_string())
+                    .collect::<Vec<String>>();
+
+                map.map
+                    .get(&ids[0])
+                    .unwrap()
+                    .entity_behaviour_list
+                    .get::<MockBehaviour>(get_behaviour_name!(MockBehaviour))
+                    .unwrap()
+            }
+
+            fn make_services_mock() -> GameServices {
+                GameServices::new()
+            }
+
+            fn make_commands_mock() -> GameCommandQueue {
+                GameCommandQueue::new()
+            }
+
+            #[test]
+            fn init_is_called_on_first_update() {
+                let mut map = make_mock();
+                let services = make_services_mock();
+                let mut commands = make_commands_mock();
+
+                {
+                    let behaviour = get_mock_behaviour_from_mock_map(&map);
+                    assert_eq!(behaviour.mock_init.num_calls(), 0);
+                }
+
+                map.update(&services, &mut commands);
+
+                {
+                    let behaviour = get_mock_behaviour_from_mock_map(&map);
+                    assert_eq!(behaviour.mock_init.num_calls(), 1);
+                }
+            }
+
+            #[test]
+            fn init_is_not_called_on_subsequent_updates() {
+                let mut map = make_mock();
+                let services = make_services_mock();
+                let mut commands = make_commands_mock();
+
+                {
+                    let behaviour = get_mock_behaviour_from_mock_map(&map);
+                    assert_eq!(behaviour.mock_init.num_calls(), 0);
+                }
+
+                map.update(&services, &mut commands);
+
+                {
+                    let behaviour = get_mock_behaviour_from_mock_map(&map);
+                    assert_eq!(behaviour.mock_init.num_calls(), 1);
+                }
+
+                map.update(&services, &mut commands);
+
+                {
+                    let behaviour = get_mock_behaviour_from_mock_map(&map);
+                    assert_eq!(behaviour.mock_init.num_calls(), 1);
+                }
+            }
+
+            #[test]
+            fn update_is_not_called_on_first_update() {
+                let mut map = make_mock();
+                let services = make_services_mock();
+                let mut commands = make_commands_mock();
+
+                {
+                    let behaviour = get_mock_behaviour_from_mock_map(&map);
+                    assert_eq!(behaviour.mock_update.num_calls(), 0);
+                }
+
+                map.update(&services, &mut commands);
+
+                {
+                    let behaviour = get_mock_behaviour_from_mock_map(&map);
+                    assert_eq!(behaviour.mock_update.num_calls(), 0);
+                }
+            }
+
+            #[test]
+            fn update_is_called_on_subsequent_updates() {
+                let mut map = make_mock();
+                let services = make_services_mock();
+                let mut commands = make_commands_mock();
+
+                {
+                    let behaviour = get_mock_behaviour_from_mock_map(&map);
+                    assert_eq!(behaviour.mock_update.num_calls(), 0);
+                }
+
+                map.update(&services, &mut commands);
+
+                {
+                    let behaviour = get_mock_behaviour_from_mock_map(&map);
+                    assert_eq!(behaviour.mock_update.num_calls(), 0);
+                }
+
+                map.update(&services, &mut commands);
+
+                {
+                    let behaviour = get_mock_behaviour_from_mock_map(&map);
+                    assert_eq!(behaviour.mock_update.num_calls(), 1);
+                }
+            }
         }
     }
 }

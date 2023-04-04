@@ -1,5 +1,8 @@
 use crate::core::data::Transform;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::{
+    hash::{Hash, Hasher},
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 fn get_id() -> usize {
     static ID_COUNTER: AtomicUsize = AtomicUsize::new(0);
@@ -48,6 +51,19 @@ impl Entity {
         self.transform.as_mut()
     }
 }
+
+impl Hash for Entity {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+impl PartialEq for Entity {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+impl Eq for Entity {}
 
 #[cfg(test)]
 mod tests {
