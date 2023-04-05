@@ -23,6 +23,8 @@ impl Entity {
         Self::new_with_id(name, transform, &get_id().to_string())
     }
 
+    /// Allows you to specify the ID of the new Entity. Note that Entity IDs **MUST BE UNIQUE**. There cannot be
+    /// two Entities in the game at the same time with the same ID, otherwise one will overwrite the other.
     pub fn new_with_id(name: &str, transform: Transform, id: &str) -> Self {
         Self {
             id: id.to_string(),

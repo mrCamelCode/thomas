@@ -1,4 +1,4 @@
-use dyn_clone::{DynClone, clone_trait_object};
+use dyn_clone::{clone_trait_object, DynClone};
 
 use crate::core::{Entity, GameCommandQueue, GameServices};
 use std::any::Any;
@@ -52,6 +52,15 @@ impl EntityBehaviourMap {
                 &behaviour_map_value.entity_behaviour_list,
             )
         })
+    }
+
+    /// Retrieves an Entity and its Behaviours by the Entity's ID. This is an *O(1)* operation.
+    pub fn find(&self, entity_id: &str) -> Option<(&Entity, &BehaviourList)> {
+        if let Some(entry) = self.map.get(entity_id) {
+            return Some((&entry.entity, &entry.entity_behaviour_list));
+        }
+
+        None
     }
 }
 impl Clone for EntityBehaviourMap {
@@ -143,7 +152,9 @@ impl Clone for BehaviourList {
         let mut cloned_list = BehaviourList::new();
 
         for (behaviour_name, behaviour_meta_data) in self.behaviours.iter() {
-            cloned_list.behaviours.insert(behaviour_name.clone(), behaviour_meta_data.clone());
+            cloned_list
+                .behaviours
+                .insert(behaviour_name.clone(), behaviour_meta_data.clone());
         }
 
         cloned_list
@@ -166,7 +177,6 @@ pub trait CustomBehaviour: Behaviour + DynClone {
 }
 clone_trait_object!(CustomBehaviour);
 
-
 struct BehaviourMetaData {
     custom_behaviour: Box<dyn CustomBehaviour>,
     has_been_init: bool,
@@ -183,7 +193,7 @@ impl Clone for BehaviourMetaData {
     fn clone(&self) -> Self {
         Self {
             custom_behaviour: self.custom_behaviour.clone(),
-            has_been_init: self.has_been_init
+            has_been_init: self.has_been_init,
         }
     }
 }
