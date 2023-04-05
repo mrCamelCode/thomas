@@ -170,88 +170,178 @@ mod tests {
     use super::*;
 
     mod produce_draw_string {
-        use crate::core::data::{Coords, Transform};
-
         use super::*;
 
-        #[test]
-        fn it_includes_all_renderable_entities() {
-            let renderer = TerminalRenderer::new(TerminalRendererConfig {
-                screen_resolution: Dimensions2d::new(3, 3),
-                include_screen_outline: false,
-            });
+        mod no_screen_outline {
+            use crate::core::data::{Coords, Transform};
 
-            let list: Vec<(Entity, BehaviourList)> = vec![
-                (
-                    Entity::new("E1", Transform::default()),
-                    BehaviourList::new(),
-                ),
-                (
-                    Entity::new("E2", Transform::new(Coords::new(1.0, 1.0, 0.0))),
-                    BehaviourList::from(vec![Box::new(TerminalRenderable::new('^', 0))]),
-                ),
-                (
-                    Entity::new("E3", Transform::new(Coords::new(0.0, 0.0, 0.0))),
-                    BehaviourList::from(vec![Box::new(TerminalRenderable::new('5', 0))]),
-                ),
-                (
-                    Entity::new("E4", Transform::default()),
-                    BehaviourList::new(),
-                ),
-                (
-                    Entity::new("E5", Transform::new(Coords::new(2.0, 2.0, 0.0))),
-                    BehaviourList::from(vec![Box::new(TerminalRenderable::new('@', 0))]),
-                ),
-            ];
+            use super::*;
 
-            let result = renderer.produce_draw_string(
-                &list
-                    .iter()
-                    .map(|(e, b)| (e, b))
-                    .collect::<Vec<(&Entity, &BehaviourList)>>(),
-            );
+            #[test]
+            fn it_includes_all_renderable_entities() {
+                let renderer = TerminalRenderer::new(TerminalRendererConfig {
+                    screen_resolution: Dimensions2d::new(3, 3),
+                    include_screen_outline: false,
+                });
 
-            assert_eq!(result, "5  \r\n ^ \r\n  @")
+                let list: Vec<(Entity, BehaviourList)> = vec![
+                    (
+                        Entity::new("E1", Transform::default()),
+                        BehaviourList::new(),
+                    ),
+                    (
+                        Entity::new("E2", Transform::new(Coords::new(1.0, 1.0, 0.0))),
+                        BehaviourList::from(vec![Box::new(TerminalRenderable::new('^', 0))]),
+                    ),
+                    (
+                        Entity::new("E3", Transform::new(Coords::new(0.0, 0.0, 0.0))),
+                        BehaviourList::from(vec![Box::new(TerminalRenderable::new('5', 0))]),
+                    ),
+                    (
+                        Entity::new("E4", Transform::default()),
+                        BehaviourList::new(),
+                    ),
+                    (
+                        Entity::new("E5", Transform::new(Coords::new(2.0, 2.0, 0.0))),
+                        BehaviourList::from(vec![Box::new(TerminalRenderable::new('@', 0))]),
+                    ),
+                ];
+
+                let result = renderer.produce_draw_string(
+                    &list
+                        .iter()
+                        .map(|(e, b)| (e, b))
+                        .collect::<Vec<(&Entity, &BehaviourList)>>(),
+                );
+
+                assert_eq!(result, "5  \r\n ^ \r\n  @")
+            }
+
+            #[test]
+            fn values_on_higher_layer_overwrite_lower_layer_values() {
+                let renderer = TerminalRenderer::new(TerminalRendererConfig {
+                    screen_resolution: Dimensions2d::new(3, 3),
+                    include_screen_outline: false,
+                });
+
+                let list: Vec<(Entity, BehaviourList)> = vec![
+                    (
+                        Entity::new("E1", Transform::default()),
+                        BehaviourList::new(),
+                    ),
+                    (
+                        Entity::new("E2", Transform::new(Coords::new(2.0, 2.0, 0.0))),
+                        BehaviourList::from(vec![Box::new(TerminalRenderable::new('^', 1))]),
+                    ),
+                    (
+                        Entity::new("E3", Transform::new(Coords::new(0.0, 0.0, 0.0))),
+                        BehaviourList::from(vec![Box::new(TerminalRenderable::new('5', 0))]),
+                    ),
+                    (
+                        Entity::new("E4", Transform::default()),
+                        BehaviourList::new(),
+                    ),
+                    (
+                        Entity::new("E5", Transform::new(Coords::new(2.0, 2.0, 0.0))),
+                        BehaviourList::from(vec![Box::new(TerminalRenderable::new('@', 0))]),
+                    ),
+                ];
+
+                let result = renderer.produce_draw_string(
+                    &list
+                        .iter()
+                        .map(|(e, b)| (e, b))
+                        .collect::<Vec<(&Entity, &BehaviourList)>>(),
+                );
+
+                assert_eq!(result, "5  \r\n   \r\n  ^")
+            }
         }
 
-        #[test]
-        fn values_on_higher_layer_overwrite_lower_layer_values() {
-            let renderer = TerminalRenderer::new(TerminalRendererConfig {
-                screen_resolution: Dimensions2d::new(3, 3),
-                include_screen_outline: false,
-            });
+        mod with_screen_outline {
+            use crate::core::data::{Coords, Transform};
 
-            let list: Vec<(Entity, BehaviourList)> = vec![
-                (
-                    Entity::new("E1", Transform::default()),
-                    BehaviourList::new(),
-                ),
-                (
-                    Entity::new("E2", Transform::new(Coords::new(2.0, 2.0, 0.0))),
-                    BehaviourList::from(vec![Box::new(TerminalRenderable::new('^', 1))]),
-                ),
-                (
-                    Entity::new("E3", Transform::new(Coords::new(0.0, 0.0, 0.0))),
-                    BehaviourList::from(vec![Box::new(TerminalRenderable::new('5', 0))]),
-                ),
-                (
-                    Entity::new("E4", Transform::default()),
-                    BehaviourList::new(),
-                ),
-                (
-                    Entity::new("E5", Transform::new(Coords::new(2.0, 2.0, 0.0))),
-                    BehaviourList::from(vec![Box::new(TerminalRenderable::new('@', 0))]),
-                ),
-            ];
+            use super::*;
 
-            let result = renderer.produce_draw_string(
-                &list
-                    .iter()
-                    .map(|(e, b)| (e, b))
-                    .collect::<Vec<(&Entity, &BehaviourList)>>(),
-            );
+            #[test]
+            fn it_includes_all_renderable_entities() {
+                let renderer = TerminalRenderer::new(TerminalRendererConfig {
+                    screen_resolution: Dimensions2d::new(3, 3),
+                    include_screen_outline: true,
+                });
 
-            assert_eq!(result, "5  \r\n   \r\n  ^")
+                let list: Vec<(Entity, BehaviourList)> = vec![
+                    (
+                        Entity::new("E1", Transform::default()),
+                        BehaviourList::new(),
+                    ),
+                    (
+                        Entity::new("E2", Transform::new(Coords::new(1.0, 1.0, 0.0))),
+                        BehaviourList::from(vec![Box::new(TerminalRenderable::new('^', 0))]),
+                    ),
+                    (
+                        Entity::new("E3", Transform::new(Coords::new(0.0, 0.0, 0.0))),
+                        BehaviourList::from(vec![Box::new(TerminalRenderable::new('5', 0))]),
+                    ),
+                    (
+                        Entity::new("E4", Transform::default()),
+                        BehaviourList::new(),
+                    ),
+                    (
+                        Entity::new("E5", Transform::new(Coords::new(2.0, 2.0, 0.0))),
+                        BehaviourList::from(vec![Box::new(TerminalRenderable::new('@', 0))]),
+                    ),
+                ];
+
+                let result = renderer.produce_draw_string(
+                    &list
+                        .iter()
+                        .map(|(e, b)| (e, b))
+                        .collect::<Vec<(&Entity, &BehaviourList)>>(),
+                );
+
+                assert_eq!(result, "5  \r\n ^ \r\n  @")
+            }
+
+            #[test]
+            fn values_on_higher_layer_overwrite_lower_layer_values() {
+                let renderer = TerminalRenderer::new(TerminalRendererConfig {
+                    screen_resolution: Dimensions2d::new(3, 3),
+                    include_screen_outline: true,
+                });
+
+                let list: Vec<(Entity, BehaviourList)> = vec![
+                    (
+                        Entity::new("E1", Transform::default()),
+                        BehaviourList::new(),
+                    ),
+                    (
+                        Entity::new("E2", Transform::new(Coords::new(2.0, 2.0, 0.0))),
+                        BehaviourList::from(vec![Box::new(TerminalRenderable::new('^', 1))]),
+                    ),
+                    (
+                        Entity::new("E3", Transform::new(Coords::new(0.0, 0.0, 0.0))),
+                        BehaviourList::from(vec![Box::new(TerminalRenderable::new('5', 0))]),
+                    ),
+                    (
+                        Entity::new("E4", Transform::default()),
+                        BehaviourList::new(),
+                    ),
+                    (
+                        Entity::new("E5", Transform::new(Coords::new(2.0, 2.0, 0.0))),
+                        BehaviourList::from(vec![Box::new(TerminalRenderable::new('@', 0))]),
+                    ),
+                ];
+
+                let result = renderer.produce_draw_string(
+                    &list
+                        .iter()
+                        .map(|(e, b)| (e, b))
+                        .collect::<Vec<(&Entity, &BehaviourList)>>(),
+                );
+
+                assert_eq!(result, "5  \r\n   \r\n  ^")
+            }
         }
     }
 }

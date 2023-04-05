@@ -1,6 +1,6 @@
 use std::ops::{Add, AddAssign, Sub, SubAssign};
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct IntCoords2d {
     x: i64,
     y: i64,
@@ -23,7 +23,7 @@ impl IntCoords2d {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct IntCoords {
     x: i64,
     y: i64,
@@ -51,7 +51,7 @@ impl IntCoords {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Coords {
     x: f64,
     y: f64,

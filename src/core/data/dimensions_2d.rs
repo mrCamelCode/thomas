@@ -1,4 +1,4 @@
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct Dimensions2d {
     height: u64,
     width: u64,
