@@ -1,7 +1,7 @@
 use super::{Behaviour, CustomBehaviour};
 use thomas_derive::Behaviour;
 
-#[derive(Behaviour)]
+#[derive(Behaviour, Clone)]
 pub struct TerminalRenderable {
     pub display: char,
     pub layer: u8,

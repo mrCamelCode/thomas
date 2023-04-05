@@ -1,3 +1,5 @@
+use dyn_clone::{DynClone, clone_trait_object};
+
 use crate::core::{Entity, GameCommandQueue, GameServices};
 use std::any::Any;
 use std::collections::HashMap;
@@ -8,7 +10,8 @@ macro_rules! get_behaviour_name {
         stringify!($name)
     };
 }
-pub(crate) struct EntityBehaviourMap {
+
+pub struct EntityBehaviourMap {
     map: HashMap<String, EntityBehaviourMapValue>,
 }
 impl EntityBehaviourMap {
@@ -32,11 +35,14 @@ impl EntityBehaviourMap {
         &mut self,
         game_services: &GameServices,
         game_commands: &mut GameCommandQueue,
+        world: &EntityBehaviourMap,
     ) {
-        self.map.values_mut().for_each(|val| {
+        self.map.retain(|_, val| !val.entity.is_destroyed());
+
+        for val in self.map.values_mut() {
             val.entity_behaviour_list
-                .update(&mut val.entity, game_services, game_commands)
-        });
+                .update(&mut val.entity, game_services, game_commands, world)
+        }
     }
 
     pub fn entries(&self) -> impl Iterator<Item = (&Entity, &BehaviourList)> {
@@ -46,6 +52,17 @@ impl EntityBehaviourMap {
                 &behaviour_map_value.entity_behaviour_list,
             )
         })
+    }
+}
+impl Clone for EntityBehaviourMap {
+    fn clone(&self) -> Self {
+        let mut cloned_map = EntityBehaviourMap::new();
+
+        for (entity, behaviours) in self.entries() {
+            cloned_map.add(entity.clone(), behaviours.clone());
+        }
+
+        cloned_map
     }
 }
 
@@ -95,9 +112,10 @@ impl BehaviourList {
         entity: &mut Entity,
         game_services: &GameServices,
         game_commands: &mut GameCommandQueue,
+        world: &EntityBehaviourMap,
     ) {
         self.behaviours.values_mut().for_each(|val| {
-            let utils = BehaviourUtils::new(entity, game_services, game_commands);
+            let utils = BehaviourUtils::new(entity, game_services, game_commands, world);
 
             if val.has_been_init {
                 val.custom_behaviour.update(utils);
@@ -120,19 +138,34 @@ impl BehaviourList {
         self.behaviours.remove(behaviour_name);
     }
 }
+impl Clone for BehaviourList {
+    fn clone(&self) -> Self {
+        let mut cloned_list = BehaviourList::new();
+
+        for (behaviour_name, behaviour_meta_data) in self.behaviours.iter() {
+            cloned_list.behaviours.insert(behaviour_name.clone(), behaviour_meta_data.clone());
+        }
+
+        cloned_list
+    }
+}
 
 pub trait Behaviour {
     fn name(&self) -> &'static str;
     fn as_any(&self) -> &dyn Any;
 }
 
-pub trait CustomBehaviour: Behaviour {
+pub trait CustomBehaviour: Behaviour + DynClone {
     /// Invoked on the first frame this behaviour is alive.
     fn init(&mut self, _utils: BehaviourUtils) {}
 
     /// Invoked on every frame after the first init.
     fn update(&mut self, _utils: BehaviourUtils) {}
+
+    fn on_destroy(&mut self, _utils: BehaviourUtils) {}
 }
+clone_trait_object!(CustomBehaviour);
+
 
 struct BehaviourMetaData {
     custom_behaviour: Box<dyn CustomBehaviour>,
@@ -146,22 +179,33 @@ impl BehaviourMetaData {
         }
     }
 }
+impl Clone for BehaviourMetaData {
+    fn clone(&self) -> Self {
+        Self {
+            custom_behaviour: self.custom_behaviour.clone(),
+            has_been_init: self.has_been_init
+        }
+    }
+}
 
 pub struct BehaviourUtils<'a> {
     entity: &'a mut Entity,
-    game_services: &'a GameServices,
-    game_commands: &'a mut GameCommandQueue,
+    services: &'a GameServices,
+    commands: &'a mut GameCommandQueue,
+    world: &'a EntityBehaviourMap,
 }
 impl<'a> BehaviourUtils<'a> {
     pub(crate) fn new(
         entity: &'a mut Entity,
-        game_services: &'a GameServices,
-        game_commands: &'a mut GameCommandQueue,
+        services: &'a GameServices,
+        commands: &'a mut GameCommandQueue,
+        world: &'a EntityBehaviourMap,
     ) -> Self {
         Self {
             entity,
-            game_services,
-            game_commands,
+            services,
+            commands,
+            world,
         }
     }
 }
@@ -172,7 +216,7 @@ mod tests {
     use crate::mock_fn::MockFn;
     use thomas_derive::Behaviour;
 
-    #[derive(Behaviour)]
+    #[derive(Behaviour, Clone)]
     struct MockBehaviour {
         mock_update: MockFn,
         mock_init: MockFn,
@@ -214,15 +258,15 @@ mod tests {
                 let mut map = EntityBehaviourMap::new();
 
                 map.add(
-                    Entity::new("Test Entity 1", Transform::default()),
+                    Entity::new_with_id("Test Entity 1", Transform::default(), "te1"),
                     BehaviourList::from(vec![Box::new(MockBehaviour::new())]),
                 );
                 map.add(
-                    Entity::new("Test Entity 2", Transform::default()),
+                    Entity::new_with_id("Test Entity 2", Transform::default(), "te2"),
                     BehaviourList::from(vec![Box::new(MockBehaviour::new())]),
                 );
                 map.add(
-                    Entity::new("Test Entity 3", Transform::default()),
+                    Entity::new_with_id("Test Entity 3", Transform::default(), "te3"),
                     BehaviourList::from(vec![Box::new(MockBehaviour::new())]),
                 );
 
@@ -230,14 +274,8 @@ mod tests {
             }
 
             fn get_mock_behaviour_from_mock_map(map: &EntityBehaviourMap) -> &MockBehaviour {
-                let ids: Vec<String> = map
-                    .map
-                    .values()
-                    .map(|val| val.entity.id().to_string())
-                    .collect::<Vec<String>>();
-
                 map.map
-                    .get(&ids[0])
+                    .get("te1")
                     .unwrap()
                     .entity_behaviour_list
                     .get::<MockBehaviour>(get_behaviour_name!(MockBehaviour))
@@ -263,7 +301,7 @@ mod tests {
                     assert_eq!(behaviour.mock_init.num_calls(), 0);
                 }
 
-                map.update(&services, &mut commands);
+                map.update(&services, &mut commands, &EntityBehaviourMap::new());
 
                 {
                     let behaviour = get_mock_behaviour_from_mock_map(&map);
@@ -282,14 +320,14 @@ mod tests {
                     assert_eq!(behaviour.mock_init.num_calls(), 0);
                 }
 
-                map.update(&services, &mut commands);
+                map.update(&services, &mut commands, &EntityBehaviourMap::new());
 
                 {
                     let behaviour = get_mock_behaviour_from_mock_map(&map);
                     assert_eq!(behaviour.mock_init.num_calls(), 1);
                 }
 
-                map.update(&services, &mut commands);
+                map.update(&services, &mut commands, &EntityBehaviourMap::new());
 
                 {
                     let behaviour = get_mock_behaviour_from_mock_map(&map);
@@ -308,7 +346,7 @@ mod tests {
                     assert_eq!(behaviour.mock_update.num_calls(), 0);
                 }
 
-                map.update(&services, &mut commands);
+                map.update(&services, &mut commands, &EntityBehaviourMap::new());
 
                 {
                     let behaviour = get_mock_behaviour_from_mock_map(&map);
@@ -327,18 +365,58 @@ mod tests {
                     assert_eq!(behaviour.mock_update.num_calls(), 0);
                 }
 
-                map.update(&services, &mut commands);
+                map.update(&services, &mut commands, &EntityBehaviourMap::new());
 
                 {
                     let behaviour = get_mock_behaviour_from_mock_map(&map);
                     assert_eq!(behaviour.mock_update.num_calls(), 0);
                 }
 
-                map.update(&services, &mut commands);
+                map.update(&services, &mut commands, &EntityBehaviourMap::new());
 
                 {
                     let behaviour = get_mock_behaviour_from_mock_map(&map);
                     assert_eq!(behaviour.mock_update.num_calls(), 1);
+                }
+            }
+
+            #[test]
+            fn update_removes_destroyed_entities_and_does_not_call_update_on_their_behaviours() {
+                let mut map = make_mock();
+                let services = make_services_mock();
+                let mut commands = make_commands_mock();
+
+                map.map.get_mut("te2").unwrap().entity.destroy();
+
+                fn get_destroyed_mock_behaviour(map: &EntityBehaviourMap) -> &MockBehaviour {
+                    map.map
+                        .get("te2")
+                        .unwrap()
+                        .entity_behaviour_list
+                        .get::<MockBehaviour>(get_behaviour_name!(MockBehaviour))
+                        .unwrap()
+                }
+
+                {
+                    let behaviour = get_destroyed_mock_behaviour(&map);
+
+                    assert_eq!(behaviour.mock_update.num_calls(), 0);
+                    assert_eq!(map.map.keys().collect::<Vec<&String>>().len(), 3);
+                }
+
+                map.update(&services, &mut commands, &EntityBehaviourMap::new());
+
+                {
+                    let te1 = map.map.get("te1");
+                    let te2 = map.map.get("te2");
+                    let te3 = map.map.get("te3");
+
+                    assert!(te2.is_none());
+
+                    assert!(te1.is_some());
+                    assert!(te3.is_some());
+
+                    assert_eq!(map.map.keys().collect::<Vec<&String>>().len(), 2);
                 }
             }
         }

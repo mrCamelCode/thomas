@@ -10,6 +10,7 @@ fn get_id() -> usize {
     ID_COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 
+#[derive(Clone)]
 /// Representation of an entity in the game world. All objects that exist in the game world are Entities.
 pub struct Entity {
     id: String,
@@ -17,11 +18,14 @@ pub struct Entity {
     transform: Transform,
     is_destroyed: bool,
 }
-
 impl Entity {
     pub fn new(name: &str, transform: Transform) -> Self {
-        Entity {
-            id: get_id().to_string(),
+        Self::new_with_id(name, transform, &get_id().to_string())
+    }
+
+    pub fn new_with_id(name: &str, transform: Transform, id: &str) -> Self {
+        Self {
+            id: id.to_string(),
             name: name.to_string(),
             transform,
             is_destroyed: false,

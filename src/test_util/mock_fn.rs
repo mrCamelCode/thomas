@@ -1,3 +1,4 @@
+#[derive(Clone)]
 pub struct MockFn {
     num_calls: u32,
 }

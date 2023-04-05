@@ -25,24 +25,26 @@ impl GameServices {
 
 pub struct Game {
     entity_behaviour_map: EntityBehaviourMap,
-    command_queue: GameCommandQueue,
     game_services: GameServices,
 }
 impl Game {
     pub fn new() -> Game {
         Game {
             entity_behaviour_map: EntityBehaviourMap::new(),
-            command_queue: GameCommandQueue::new(),
             game_services: GameServices::new(),
         }
     }
 
-    pub fn add_entity(&mut self, entity: Entity, behaviours: BehaviourList) {}
+    pub fn add_entity(&mut self, entity: Entity, behaviours: BehaviourList) {
+        self.entity_behaviour_map.add(entity, behaviours);
+    }
 
     pub fn start(&mut self, renderer: &dyn Renderer) {
         renderer.init();
 
-        loop {
+        'main_game_loop: loop {
+            let mut command_queue = GameCommandQueue::new();
+
             self.game_services.input.update();
             self.game_services.time.update();
 
@@ -50,8 +52,11 @@ impl Game {
                 break;
             }
 
-            self.entity_behaviour_map
-                .update(&self.game_services, &mut self.command_queue);
+            self.entity_behaviour_map.update(
+                &self.game_services,
+                &mut command_queue,
+                &self.entity_behaviour_map.clone()
+            );
 
             renderer.render(
                 self.entity_behaviour_map
@@ -59,7 +64,17 @@ impl Game {
                     .collect::<Vec<(&Entity, &BehaviourList)>>(),
             );
 
-            self.command_queue.handle();
+            for command in command_queue.consume() {
+                match command {
+                    GameCommand::AddEntity { entity, behaviours } => {
+                        self.add_entity(entity, behaviours);
+                    }
+                    GameCommand::ClearEntities => {
+                        self.entity_behaviour_map = EntityBehaviourMap::new();
+                    }
+                    GameCommand::Quit => break 'main_game_loop,
+                }
+            }
         }
 
         renderer.cleanup();
@@ -78,10 +93,8 @@ impl GameCommandQueue {
         self.queue.push(command);
     }
 
-    pub(crate) fn handle(&self) {
-        todo!("Maybe handle by giving back a consuming iterator?");
-        // Reverse because pushes put things at the end of the vector and Queues should work first-in, first-out.
-        // self.queue.into_iter().rev()
+    pub(crate) fn consume(self) -> impl Iterator<Item = GameCommand> {
+        self.queue.into_iter()
     }
 }
 
@@ -92,4 +105,43 @@ pub enum GameCommand {
         entity: Entity,
         behaviours: BehaviourList,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod game_command_queue {
+        use crate::core::data::Transform;
+
+        use super::*;
+
+        #[test]
+        fn goes_through_commands_in_the_order_they_were_issued() {
+            let mut queue = GameCommandQueue::new();
+
+            queue.issue(GameCommand::Quit);
+            queue.issue(GameCommand::ClearEntities);
+            queue.issue(GameCommand::AddEntity {
+                entity: Entity::new("test", Transform::default()),
+                behaviours: BehaviourList::new(),
+            });
+
+            let mut iter = queue.consume();
+
+            assert!(match iter.next().unwrap() {
+                GameCommand::Quit => true,
+                _ => false,
+            });
+            assert!(match iter.next().unwrap() {
+                GameCommand::ClearEntities => true,
+                _ => false,
+            });
+            assert!(match iter.next().unwrap() {
+                GameCommand::AddEntity { .. } => true,
+                _ => false,
+            });
+            assert!(iter.next().is_none());
+        }
+    }
 }
