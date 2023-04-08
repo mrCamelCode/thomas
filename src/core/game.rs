@@ -1,6 +1,6 @@
 use device_query::Keycode;
 
-use super::{renderer::Renderer, BehaviourList, Entity, EntityBehaviourMap, Input, Time};
+use super::{renderer::Renderer, BehaviourList, Entity, World, Input, Time};
 
 pub struct GameServices {
     input: Input,
@@ -24,19 +24,19 @@ impl GameServices {
 }
 
 pub struct Game {
-    entity_behaviour_map: EntityBehaviourMap,
+    world: World,
     game_services: GameServices,
 }
 impl Game {
     pub fn new() -> Game {
         Game {
-            entity_behaviour_map: EntityBehaviourMap::new(),
+            world: World::new(),
             game_services: GameServices::new(),
         }
     }
 
     pub fn add_entity(&mut self, entity: Entity, behaviours: BehaviourList) {
-        self.entity_behaviour_map.add(entity, behaviours);
+        self.world.add(entity, behaviours);
     }
 
     pub fn start(&mut self, renderer: &dyn Renderer) {
@@ -52,14 +52,14 @@ impl Game {
                 break;
             }
 
-            self.entity_behaviour_map.update(
+            self.world.update(
                 &self.game_services,
                 &mut command_queue,
-                &self.entity_behaviour_map.clone()
+                &self.world.clone()
             );
 
             renderer.render(
-                self.entity_behaviour_map
+                self.world
                     .entries()
                     .collect::<Vec<(&Entity, &BehaviourList)>>(),
             );
@@ -70,7 +70,7 @@ impl Game {
                         self.add_entity(entity, behaviours);
                     }
                     GameCommand::ClearEntities => {
-                        self.entity_behaviour_map = EntityBehaviourMap::new();
+                        self.world = World::new();
                     }
                     GameCommand::Quit => break 'main_game_loop,
                 }

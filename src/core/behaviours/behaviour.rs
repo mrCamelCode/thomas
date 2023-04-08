@@ -11,18 +11,18 @@ macro_rules! get_behaviour_name {
     };
 }
 
-pub struct EntityBehaviourMap {
-    map: HashMap<String, EntityBehaviourMapValue>,
+pub struct World {
+    entity_behaviour_map: HashMap<String, EntityBehaviourMapValue>,
 }
-impl EntityBehaviourMap {
+impl World {
     pub(crate) fn new() -> Self {
         Self {
-            map: HashMap::new(),
+            entity_behaviour_map: HashMap::new(),
         }
     }
 
     pub(crate) fn add(&mut self, entity: Entity, behaviours: BehaviourList) {
-        self.map.insert(
+        self.entity_behaviour_map.insert(
             entity.id().to_string(),
             EntityBehaviourMapValue {
                 entity,
@@ -35,18 +35,18 @@ impl EntityBehaviourMap {
         &mut self,
         game_services: &GameServices,
         game_commands: &mut GameCommandQueue,
-        world: &EntityBehaviourMap,
+        world: &World,
     ) {
-        self.map.retain(|_, val| !val.entity.is_destroyed());
+        self.entity_behaviour_map.retain(|_, val| !val.entity.is_destroyed());
 
-        for val in self.map.values_mut() {
+        for val in self.entity_behaviour_map.values_mut() {
             val.entity_behaviour_list
                 .update(&mut val.entity, game_services, game_commands, world)
         }
     }
 
     pub fn entries(&self) -> impl Iterator<Item = (&Entity, &BehaviourList)> {
-        self.map.iter().map(|(_, behaviour_map_value)| {
+        self.entity_behaviour_map.iter().map(|(_, behaviour_map_value)| {
             (
                 &behaviour_map_value.entity,
                 &behaviour_map_value.entity_behaviour_list,
@@ -56,16 +56,16 @@ impl EntityBehaviourMap {
 
     /// Retrieves an Entity and its Behaviours by the Entity's ID. This is an *O(1)* operation.
     pub fn find(&self, entity_id: &str) -> Option<(&Entity, &BehaviourList)> {
-        if let Some(entry) = self.map.get(entity_id) {
+        if let Some(entry) = self.entity_behaviour_map.get(entity_id) {
             return Some((&entry.entity, &entry.entity_behaviour_list));
         }
 
         None
     }
 }
-impl Clone for EntityBehaviourMap {
+impl Clone for World {
     fn clone(&self) -> Self {
-        let mut cloned_map = EntityBehaviourMap::new();
+        let mut cloned_map = World::new();
 
         for (entity, behaviours) in self.entries() {
             cloned_map.add(entity.clone(), behaviours.clone());
@@ -121,7 +121,7 @@ impl BehaviourList {
         entity: &mut Entity,
         game_services: &GameServices,
         game_commands: &mut GameCommandQueue,
-        world: &EntityBehaviourMap,
+        world: &World,
     ) {
         self.behaviours.values_mut().for_each(|val| {
             let utils = BehaviourUtils::new(entity, game_services, game_commands, world);
@@ -202,14 +202,14 @@ pub struct BehaviourUtils<'a> {
     entity: &'a mut Entity,
     services: &'a GameServices,
     commands: &'a mut GameCommandQueue,
-    world: &'a EntityBehaviourMap,
+    world: &'a World,
 }
 impl<'a> BehaviourUtils<'a> {
     pub(crate) fn new(
         entity: &'a mut Entity,
         services: &'a GameServices,
         commands: &'a mut GameCommandQueue,
-        world: &'a EntityBehaviourMap,
+        world: &'a World,
     ) -> Self {
         Self {
             entity,
@@ -256,7 +256,7 @@ mod tests {
         }
     }
 
-    mod entity_behaviour_map {
+    mod world {
         use super::*;
 
         mod update {
@@ -264,27 +264,27 @@ mod tests {
 
             use super::*;
 
-            fn make_mock() -> EntityBehaviourMap {
-                let mut map = EntityBehaviourMap::new();
+            fn make_mock() -> World {
+                let mut world = World::new();
 
-                map.add(
+                world.add(
                     Entity::new_with_id("Test Entity 1", Transform::default(), "te1"),
                     BehaviourList::from(vec![Box::new(MockBehaviour::new())]),
                 );
-                map.add(
+                world.add(
                     Entity::new_with_id("Test Entity 2", Transform::default(), "te2"),
                     BehaviourList::from(vec![Box::new(MockBehaviour::new())]),
                 );
-                map.add(
+                world.add(
                     Entity::new_with_id("Test Entity 3", Transform::default(), "te3"),
                     BehaviourList::from(vec![Box::new(MockBehaviour::new())]),
                 );
 
-                map
+                world
             }
 
-            fn get_mock_behaviour_from_mock_map(map: &EntityBehaviourMap) -> &MockBehaviour {
-                map.map
+            fn get_mock_behaviour_from_mock_map(world: &World) -> &MockBehaviour {
+                world.entity_behaviour_map
                     .get("te1")
                     .unwrap()
                     .entity_behaviour_list
@@ -311,7 +311,7 @@ mod tests {
                     assert_eq!(behaviour.mock_init.num_calls(), 0);
                 }
 
-                map.update(&services, &mut commands, &EntityBehaviourMap::new());
+                map.update(&services, &mut commands, &World::new());
 
                 {
                     let behaviour = get_mock_behaviour_from_mock_map(&map);
@@ -330,14 +330,14 @@ mod tests {
                     assert_eq!(behaviour.mock_init.num_calls(), 0);
                 }
 
-                map.update(&services, &mut commands, &EntityBehaviourMap::new());
+                map.update(&services, &mut commands, &World::new());
 
                 {
                     let behaviour = get_mock_behaviour_from_mock_map(&map);
                     assert_eq!(behaviour.mock_init.num_calls(), 1);
                 }
 
-                map.update(&services, &mut commands, &EntityBehaviourMap::new());
+                map.update(&services, &mut commands, &World::new());
 
                 {
                     let behaviour = get_mock_behaviour_from_mock_map(&map);
@@ -356,7 +356,7 @@ mod tests {
                     assert_eq!(behaviour.mock_update.num_calls(), 0);
                 }
 
-                map.update(&services, &mut commands, &EntityBehaviourMap::new());
+                map.update(&services, &mut commands, &World::new());
 
                 {
                     let behaviour = get_mock_behaviour_from_mock_map(&map);
@@ -375,14 +375,14 @@ mod tests {
                     assert_eq!(behaviour.mock_update.num_calls(), 0);
                 }
 
-                map.update(&services, &mut commands, &EntityBehaviourMap::new());
+                map.update(&services, &mut commands, &World::new());
 
                 {
                     let behaviour = get_mock_behaviour_from_mock_map(&map);
                     assert_eq!(behaviour.mock_update.num_calls(), 0);
                 }
 
-                map.update(&services, &mut commands, &EntityBehaviourMap::new());
+                map.update(&services, &mut commands, &World::new());
 
                 {
                     let behaviour = get_mock_behaviour_from_mock_map(&map);
@@ -392,14 +392,14 @@ mod tests {
 
             #[test]
             fn update_removes_destroyed_entities_and_does_not_call_update_on_their_behaviours() {
-                let mut map = make_mock();
+                let mut world = make_mock();
                 let services = make_services_mock();
                 let mut commands = make_commands_mock();
 
-                map.map.get_mut("te2").unwrap().entity.destroy();
+                world.entity_behaviour_map.get_mut("te2").unwrap().entity.destroy();
 
-                fn get_destroyed_mock_behaviour(map: &EntityBehaviourMap) -> &MockBehaviour {
-                    map.map
+                fn get_destroyed_mock_behaviour(world: &World) -> &MockBehaviour {
+                    world.entity_behaviour_map
                         .get("te2")
                         .unwrap()
                         .entity_behaviour_list
@@ -408,25 +408,25 @@ mod tests {
                 }
 
                 {
-                    let behaviour = get_destroyed_mock_behaviour(&map);
+                    let behaviour = get_destroyed_mock_behaviour(&world);
 
                     assert_eq!(behaviour.mock_update.num_calls(), 0);
-                    assert_eq!(map.map.keys().collect::<Vec<&String>>().len(), 3);
+                    assert_eq!(world.entity_behaviour_map.keys().collect::<Vec<&String>>().len(), 3);
                 }
 
-                map.update(&services, &mut commands, &EntityBehaviourMap::new());
+                world.update(&services, &mut commands, &World::new());
 
                 {
-                    let te1 = map.map.get("te1");
-                    let te2 = map.map.get("te2");
-                    let te3 = map.map.get("te3");
+                    let te1 = world.entity_behaviour_map.get("te1");
+                    let te2 = world.entity_behaviour_map.get("te2");
+                    let te3 = world.entity_behaviour_map.get("te3");
 
                     assert!(te2.is_none());
 
                     assert!(te1.is_some());
                     assert!(te3.is_some());
 
-                    assert_eq!(map.map.keys().collect::<Vec<&String>>().len(), 2);
+                    assert_eq!(world.entity_behaviour_map.keys().collect::<Vec<&String>>().len(), 2);
                 }
             }
         }
