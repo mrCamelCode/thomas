@@ -37,7 +37,8 @@ impl World {
         game_commands: &mut GameCommandQueue,
         world: &World,
     ) {
-        self.entity_behaviour_map.retain(|_, val| !val.entity.is_destroyed());
+        self.entity_behaviour_map
+            .retain(|_, val| !val.entity.is_destroyed());
 
         for val in self.entity_behaviour_map.values_mut() {
             val.entity_behaviour_list
@@ -46,18 +47,25 @@ impl World {
     }
 
     pub fn entries(&self) -> impl Iterator<Item = (&Entity, &BehaviourList)> {
-        self.entity_behaviour_map.iter().map(|(_, behaviour_map_value)| {
-            (
-                &behaviour_map_value.entity,
-                &behaviour_map_value.entity_behaviour_list,
-            )
-        })
+        self.entity_behaviour_map
+            .iter()
+            .map(|(_, behaviour_map_value)| {
+                (
+                    &behaviour_map_value.entity,
+                    &behaviour_map_value.entity_behaviour_list,
+                )
+            })
     }
 
     /// Retrieves an Entity and its Behaviours by the Entity's ID. This is an *O(1)* operation.
-    pub fn find(&self, entity_id: &str) -> Option<(&Entity, &BehaviourList)> {
+    /// Destroyed entities are ignored and considered `None`.
+    pub fn get_entity(&self, entity_id: &str) -> Option<(&Entity, &BehaviourList)> {
         if let Some(entry) = self.entity_behaviour_map.get(entity_id) {
-            return Some((&entry.entity, &entry.entity_behaviour_list));
+            return if !entry.entity.is_destroyed() {
+                Some((&entry.entity, &entry.entity_behaviour_list))
+            } else {
+                None
+            };
         }
 
         None
@@ -284,7 +292,8 @@ mod tests {
             }
 
             fn get_mock_behaviour_from_mock_map(world: &World) -> &MockBehaviour {
-                world.entity_behaviour_map
+                world
+                    .entity_behaviour_map
                     .get("te1")
                     .unwrap()
                     .entity_behaviour_list
@@ -396,10 +405,16 @@ mod tests {
                 let services = make_services_mock();
                 let mut commands = make_commands_mock();
 
-                world.entity_behaviour_map.get_mut("te2").unwrap().entity.destroy();
+                world
+                    .entity_behaviour_map
+                    .get_mut("te2")
+                    .unwrap()
+                    .entity
+                    .destroy();
 
                 fn get_destroyed_mock_behaviour(world: &World) -> &MockBehaviour {
-                    world.entity_behaviour_map
+                    world
+                        .entity_behaviour_map
                         .get("te2")
                         .unwrap()
                         .entity_behaviour_list
@@ -411,7 +426,14 @@ mod tests {
                     let behaviour = get_destroyed_mock_behaviour(&world);
 
                     assert_eq!(behaviour.mock_update.num_calls(), 0);
-                    assert_eq!(world.entity_behaviour_map.keys().collect::<Vec<&String>>().len(), 3);
+                    assert_eq!(
+                        world
+                            .entity_behaviour_map
+                            .keys()
+                            .collect::<Vec<&String>>()
+                            .len(),
+                        3
+                    );
                 }
 
                 world.update(&services, &mut commands, &World::new());
@@ -426,8 +448,54 @@ mod tests {
                     assert!(te1.is_some());
                     assert!(te3.is_some());
 
-                    assert_eq!(world.entity_behaviour_map.keys().collect::<Vec<&String>>().len(), 2);
+                    assert_eq!(
+                        world
+                            .entity_behaviour_map
+                            .keys()
+                            .collect::<Vec<&String>>()
+                            .len(),
+                        2
+                    );
                 }
+            }
+        }
+
+        mod get_entity {
+            use crate::core::data::Transform;
+
+            use super::*;
+
+            #[test]
+            fn is_none_when_the_entity_does_not_exist() {
+                let world = World::new();
+
+                assert!(world.get_entity("test 1").is_none());
+            }
+
+            #[test]
+            fn is_expected_entity_when_it_does_exist() {
+                let mut world = World::new();
+
+                let entity = Entity::new_with_id("e", Transform::default(), "test 1");
+
+                world.add(entity, BehaviourList::new());
+
+                let result = world.get_entity("test 1");
+
+                assert!(result.is_some());
+                assert_eq!(result.unwrap().0.id(), "test 1");
+            }
+
+            #[test]
+            fn is_none_if_the_entity_is_destroyed() {
+                let mut world = World::new();
+
+                let mut entity = Entity::new_with_id("e", Transform::default(), "test 1");
+                entity.destroy();
+
+                world.add(entity, BehaviourList::new());
+
+                assert!(world.get_entity("test 1").is_none());
             }
         }
     }
