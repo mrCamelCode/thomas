@@ -19,9 +19,12 @@ use crate::{
 
 use super::Renderer;
 
+const HORIZONTAL_OUTLINE_DELIMITER: &str = "=";
+const VERTICAL_OUTLINE_DELIMITER: &str = "|";
+const NEWLINE_DELIMITER: &str = "\r\n";
+
 pub struct TerminalRendererConfig {
     screen_resolution: Dimensions2d,
-    // TODO: Use
     include_screen_outline: bool,
 }
 
@@ -33,7 +36,7 @@ impl TerminalRenderer {
         TerminalRenderer { config }
     }
 
-    fn produce_render_matrix(
+    fn make_render_matrix(
         &self,
         entities: &Vec<(&Entity, &BehaviourList)>,
     ) -> TerminalRendererMatrix {
@@ -75,8 +78,30 @@ impl TerminalRenderer {
         render_matrix
     }
 
-    fn produce_draw_string(&self, entities: &Vec<(&Entity, &BehaviourList)>) -> String {
-        let render_matrix = self.produce_render_matrix(&entities);
+    // TODO: Unit test
+    fn outline_render_string(&self, render_string: String) -> String {
+        let make_horizontal_outline = || -> String {
+            (0..self.config.screen_resolution.width())
+                .map(|_| HORIZONTAL_OUTLINE_DELIMITER)
+                .collect::<Vec<&str>>()
+                .join("")
+                .to_string()
+        };
+
+        let header = format!("/{}\\", make_horizontal_outline());
+        let footer = format!("\\{}/", make_horizontal_outline());
+
+        let body = render_string
+            .split(NEWLINE_DELIMITER)
+            .map(|line| format!("{VERTICAL_OUTLINE_DELIMITER}{line}{VERTICAL_OUTLINE_DELIMITER}"))
+            .collect::<Vec<String>>()
+            .join(NEWLINE_DELIMITER);
+
+        format!("{header}{NEWLINE_DELIMITER}{body}{NEWLINE_DELIMITER}{footer}")
+    }
+
+    fn produce_render_string(&self, entities: &Vec<(&Entity, &BehaviourList)>) -> String {
+        let render_matrix = self.make_render_matrix(&entities);
 
         let mut render_string = String::new();
 
@@ -86,7 +111,7 @@ impl TerminalRenderer {
             let is_new_row = row != curr_row;
 
             if is_new_row {
-                render_string += "\r\n";
+                render_string += NEWLINE_DELIMITER;
             }
 
             render_string += &cell.data().display.to_string();
@@ -94,7 +119,11 @@ impl TerminalRenderer {
             curr_row = row;
         }
 
-        render_string
+        if self.config.include_screen_outline {
+            self.outline_render_string(render_string)
+        } else {
+            render_string
+        }
     }
 }
 
@@ -111,7 +140,7 @@ impl Renderer for TerminalRenderer {
     fn render(&self, entities: Vec<(&Entity, &BehaviourList)>) {
         execute!(stdout(), Clear(ClearType::All));
 
-        let draw_string = self.produce_draw_string(&entities);
+        let draw_string = self.produce_render_string(&entities);
 
         write!(stdout(), "{}", draw_string);
     }
@@ -207,7 +236,7 @@ mod tests {
                     ),
                 ];
 
-                let result = renderer.produce_draw_string(
+                let result = renderer.produce_render_string(
                     &list
                         .iter()
                         .map(|(e, b)| (e, b))
@@ -247,7 +276,7 @@ mod tests {
                     ),
                 ];
 
-                let result = renderer.produce_draw_string(
+                let result = renderer.produce_render_string(
                     &list
                         .iter()
                         .map(|(e, b)| (e, b))
@@ -293,7 +322,7 @@ mod tests {
                     ),
                 ];
 
-                let result = renderer.produce_draw_string(
+                let result = renderer.produce_render_string(
                     &list
                         .iter()
                         .map(|(e, b)| (e, b))
@@ -333,7 +362,7 @@ mod tests {
                     ),
                 ];
 
-                let result = renderer.produce_draw_string(
+                let result = renderer.produce_render_string(
                     &list
                         .iter()
                         .map(|(e, b)| (e, b))
