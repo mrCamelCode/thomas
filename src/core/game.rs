@@ -23,15 +23,23 @@ impl GameServices {
     }
 }
 
+pub struct GameConfig {
+    press_escape_to_quit: bool,
+}
+
 pub struct Game {
     world: World,
     game_services: GameServices,
+    should_quit: bool,
+    config: GameConfig,
 }
 impl Game {
-    pub fn new() -> Game {
+    pub fn new(config: GameConfig) -> Game {
         Game {
             world: World::new(),
             game_services: GameServices::new(),
+            should_quit: false,
+            config,
         }
     }
 
@@ -42,15 +50,11 @@ impl Game {
     pub fn start(&mut self, renderer: &dyn Renderer) {
         renderer.init();
 
-        'main_game_loop: loop {
+        loop {
             let mut command_queue = GameCommandQueue::new();
 
             self.game_services.input.update();
             self.game_services.time.update();
-
-            if self.game_services.input.is_key_pressed(&Keycode::Escape) {
-                break;
-            }
 
             self.world
                 .update(&self.game_services, &mut command_queue, &self.world.clone());
@@ -63,21 +67,35 @@ impl Game {
                 panic!("Error occurred during render. Source error: {err}");
             }
 
-            for command in command_queue.consume() {
-                match command {
-                    GameCommand::AddEntity { entity, behaviours } => {
-                        self.add_entity(entity, behaviours);
-                    }
-                    GameCommand::ClearEntities => {
-                        self.world = World::new();
-                    }
-                    GameCommand::Quit => break 'main_game_loop,
-                }
+            self.handle_command_queue(command_queue);
+
+            if self.config.press_escape_to_quit
+                && self.game_services.input.is_key_pressed(&Keycode::Escape)
+            {
+                self.should_quit = true;
+            }
+
+            if self.should_quit {
+                break;
             }
         }
 
         if let Err(err) = renderer.cleanup() {
             panic!("Error occurred during renderer cleanup. The environment may still be in a dirty state. Source error: {err}");
+        }
+    }
+
+    fn handle_command_queue(&mut self, command_queue: GameCommandQueue) {
+        for command in command_queue.consume() {
+            match command {
+                GameCommand::AddEntity { entity, behaviours } => {
+                    self.add_entity(entity, behaviours);
+                }
+                GameCommand::ClearEntities => {
+                    self.world = World::new();
+                }
+                GameCommand::Quit => self.should_quit = true,
+            }
         }
     }
 }
