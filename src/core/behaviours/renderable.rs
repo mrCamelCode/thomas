@@ -1,1 +1,5 @@
-// TODO: Make a Renderable trait that requires a getter for a `layer` for all renderable structs.
+use crate::core::data::Layer;
+
+pub trait Renderable {
+    fn layer(&self) -> &Layer;
+}

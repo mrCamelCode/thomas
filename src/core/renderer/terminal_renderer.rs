@@ -12,7 +12,7 @@ use crossterm::{
 
 use crate::{
     core::{
-        data::{Dimensions2d, Matrix},
+        data::{Dimensions2d, Layer, Matrix},
         BehaviourList, Entity, TerminalRenderable,
     },
     get_behaviour_name,
@@ -62,13 +62,13 @@ impl TerminalRenderer {
 
                 if is_entity_on_screen(entity) {
                     if let Some(cell) = render_matrix.get(x, y) {
-                        if is_layer_above_other(*layer, cell.data().layer_of_value) {
+                        if layer.is_above(&cell.data().layer_of_value) {
                             render_matrix.update_cell_at(
                                 x,
                                 y,
                                 TerminalRendererMatrixCell {
                                     display: *display,
-                                    layer_of_value: *layer,
+                                    layer_of_value: layer.clone(),
                                 },
                             );
                         }
@@ -179,13 +179,13 @@ impl DerefMut for TerminalRendererMatrix {
 
 struct TerminalRendererMatrixCell {
     display: char,
-    layer_of_value: u8,
+    layer_of_value: Layer,
 }
 impl TerminalRendererMatrixCell {
     fn default() -> Self {
         Self {
             display: ' ',
-            layer_of_value: 0,
+            layer_of_value: Layer::base(),
         }
     }
 }
@@ -224,11 +224,17 @@ mod tests {
                     ),
                     (
                         Entity::new("E2", Transform::new(Coords::new(1.0, 1.0, 0.0))),
-                        BehaviourList::from(vec![Box::new(TerminalRenderable::new('^', 0))]),
+                        BehaviourList::from(vec![Box::new(TerminalRenderable::new(
+                            '^',
+                            Layer::base(),
+                        ))]),
                     ),
                     (
                         Entity::new("E3", Transform::new(Coords::new(0.0, 0.0, 0.0))),
-                        BehaviourList::from(vec![Box::new(TerminalRenderable::new('5', 0))]),
+                        BehaviourList::from(vec![Box::new(TerminalRenderable::new(
+                            '5',
+                            Layer::base(),
+                        ))]),
                     ),
                     (
                         Entity::new("E4", Transform::default()),
@@ -236,7 +242,10 @@ mod tests {
                     ),
                     (
                         Entity::new("E5", Transform::new(Coords::new(2.0, 2.0, 0.0))),
-                        BehaviourList::from(vec![Box::new(TerminalRenderable::new('@', 0))]),
+                        BehaviourList::from(vec![Box::new(TerminalRenderable::new(
+                            '@',
+                            Layer::base(),
+                        ))]),
                     ),
                 ];
 
@@ -264,11 +273,17 @@ mod tests {
                     ),
                     (
                         Entity::new("E2", Transform::new(Coords::new(2.0, 2.0, 0.0))),
-                        BehaviourList::from(vec![Box::new(TerminalRenderable::new('^', 1))]),
+                        BehaviourList::from(vec![Box::new(TerminalRenderable::new(
+                            '^',
+                            Layer::new(1),
+                        ))]),
                     ),
                     (
                         Entity::new("E3", Transform::new(Coords::new(0.0, 0.0, 0.0))),
-                        BehaviourList::from(vec![Box::new(TerminalRenderable::new('5', 0))]),
+                        BehaviourList::from(vec![Box::new(TerminalRenderable::new(
+                            '5',
+                            Layer::base(),
+                        ))]),
                     ),
                     (
                         Entity::new("E4", Transform::default()),
@@ -276,7 +291,10 @@ mod tests {
                     ),
                     (
                         Entity::new("E5", Transform::new(Coords::new(2.0, 2.0, 0.0))),
-                        BehaviourList::from(vec![Box::new(TerminalRenderable::new('@', 0))]),
+                        BehaviourList::from(vec![Box::new(TerminalRenderable::new(
+                            '@',
+                            Layer::base(),
+                        ))]),
                     ),
                 ];
 
@@ -310,11 +328,17 @@ mod tests {
                     ),
                     (
                         Entity::new("E2", Transform::new(Coords::new(1.0, 1.0, 0.0))),
-                        BehaviourList::from(vec![Box::new(TerminalRenderable::new('^', 0))]),
+                        BehaviourList::from(vec![Box::new(TerminalRenderable::new(
+                            '^',
+                            Layer::base(),
+                        ))]),
                     ),
                     (
                         Entity::new("E3", Transform::new(Coords::new(0.0, 0.0, 0.0))),
-                        BehaviourList::from(vec![Box::new(TerminalRenderable::new('5', 0))]),
+                        BehaviourList::from(vec![Box::new(TerminalRenderable::new(
+                            '5',
+                            Layer::base(),
+                        ))]),
                     ),
                     (
                         Entity::new("E4", Transform::default()),
@@ -322,7 +346,10 @@ mod tests {
                     ),
                     (
                         Entity::new("E5", Transform::new(Coords::new(2.0, 2.0, 0.0))),
-                        BehaviourList::from(vec![Box::new(TerminalRenderable::new('@', 0))]),
+                        BehaviourList::from(vec![Box::new(TerminalRenderable::new(
+                            '@',
+                            Layer::base(),
+                        ))]),
                     ),
                 ];
 
@@ -350,11 +377,17 @@ mod tests {
                     ),
                     (
                         Entity::new("E2", Transform::new(Coords::new(2.0, 2.0, 0.0))),
-                        BehaviourList::from(vec![Box::new(TerminalRenderable::new('^', 1))]),
+                        BehaviourList::from(vec![Box::new(TerminalRenderable::new(
+                            '^',
+                            Layer::new(1),
+                        ))]),
                     ),
                     (
                         Entity::new("E3", Transform::new(Coords::new(0.0, 0.0, 0.0))),
-                        BehaviourList::from(vec![Box::new(TerminalRenderable::new('5', 0))]),
+                        BehaviourList::from(vec![Box::new(TerminalRenderable::new(
+                            '5',
+                            Layer::base(),
+                        ))]),
                     ),
                     (
                         Entity::new("E4", Transform::default()),
@@ -362,7 +395,10 @@ mod tests {
                     ),
                     (
                         Entity::new("E5", Transform::new(Coords::new(2.0, 2.0, 0.0))),
-                        BehaviourList::from(vec![Box::new(TerminalRenderable::new('@', 0))]),
+                        BehaviourList::from(vec![Box::new(TerminalRenderable::new(
+                            '@',
+                            Layer::base(),
+                        ))]),
                     ),
                 ];
 

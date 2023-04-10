@@ -1,6 +1,8 @@
-pub mod behaviours;
-pub mod data;
-pub mod renderer;
+mod behaviours;
+mod data;
+
+mod renderer;
+mod physics;
 
 mod entity;
 mod game;
@@ -10,6 +12,9 @@ mod time;
 
 pub use entity::*;
 pub use game::*;
+
+pub use renderer::*;
+pub use physics::*;
 
 pub use input::*;
 pub use time::*;
