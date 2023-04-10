@@ -1,6 +1,6 @@
 use device_query::Keycode;
 
-use super::{renderer::Renderer, BehaviourList, Entity, World, Input, Time};
+use super::{renderer::Renderer, BehaviourList, Entity, Input, Time, World};
 
 pub struct GameServices {
     input: Input,
@@ -52,17 +52,16 @@ impl Game {
                 break;
             }
 
-            self.world.update(
-                &self.game_services,
-                &mut command_queue,
-                &self.world.clone()
-            );
+            self.world
+                .update(&self.game_services, &mut command_queue, &self.world.clone());
 
-            renderer.render(
+            if let Err(err) = renderer.render(
                 self.world
                     .entries()
                     .collect::<Vec<(&Entity, &BehaviourList)>>(),
-            );
+            ) {
+                panic!("Error occurred during render. Source error: {err}");
+            }
 
             for command in command_queue.consume() {
                 match command {
@@ -77,7 +76,9 @@ impl Game {
             }
         }
 
-        renderer.cleanup();
+        if let Err(err) = renderer.cleanup() {
+            panic!("Error occurred during renderer cleanup. The environment may still be in a dirty state. Source error: {err}");
+        }
     }
 }
 

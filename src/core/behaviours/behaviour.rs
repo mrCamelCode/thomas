@@ -38,12 +38,28 @@ impl World {
         world: &World,
     ) {
         self.entity_behaviour_map
-            .retain(|_, val| !val.entity.is_destroyed());
+            .retain(|_, entity_behaviour_map_val| {
+                let is_destroyed = entity_behaviour_map_val.entity.is_destroyed();
 
-        for val in self.entity_behaviour_map.values_mut() {
-            val.entity_behaviour_list
-                .update(&mut val.entity, game_services, game_commands, world)
-        }
+                let utils = BehaviourUtils::new(
+                    &mut entity_behaviour_map_val.entity,
+                    game_services,
+                    game_commands,
+                    world,
+                );
+
+                if is_destroyed {
+                    entity_behaviour_map_val
+                        .entity_behaviour_list
+                        .destroy(&utils);
+                } else {
+                    entity_behaviour_map_val
+                        .entity_behaviour_list
+                        .update(&utils)
+                }
+
+                !entity_behaviour_map_val.entity.is_destroyed()
+            });
     }
 
     pub fn entries(&self) -> impl Iterator<Item = (&Entity, &BehaviourList)> {
@@ -124,16 +140,8 @@ impl BehaviourList {
         None
     }
 
-    pub fn update(
-        &mut self,
-        entity: &mut Entity,
-        game_services: &GameServices,
-        game_commands: &mut GameCommandQueue,
-        world: &World,
-    ) {
+    pub(crate) fn update(&mut self, utils: &BehaviourUtils) {
         self.behaviours.values_mut().for_each(|val| {
-            let utils = BehaviourUtils::new(entity, game_services, game_commands, world);
-
             if val.has_been_init {
                 val.custom_behaviour.update(utils);
             } else {
@@ -141,6 +149,12 @@ impl BehaviourList {
 
                 val.has_been_init = true;
             }
+        });
+    }
+
+    pub(crate) fn destroy(&mut self, utils: &BehaviourUtils) {
+        self.behaviours.values_mut().for_each(|behaviour| {
+            behaviour.custom_behaviour.on_destroy(utils);
         });
     }
 
@@ -176,12 +190,12 @@ pub trait Behaviour {
 
 pub trait CustomBehaviour: Behaviour + DynClone {
     /// Invoked on the first frame this behaviour is alive.
-    fn init(&mut self, _utils: BehaviourUtils) {}
+    fn init(&mut self, _utils: &BehaviourUtils) {}
 
     /// Invoked on every frame after the first init.
-    fn update(&mut self, _utils: BehaviourUtils) {}
+    fn update(&mut self, _utils: &BehaviourUtils) {}
 
-    fn on_destroy(&mut self, _utils: BehaviourUtils) {}
+    fn on_destroy(&mut self, _utils: &BehaviourUtils) {}
 }
 clone_trait_object!(CustomBehaviour);
 
@@ -206,6 +220,7 @@ impl Clone for BehaviourMetaData {
     }
 }
 
+#[allow(dead_code)]
 pub struct BehaviourUtils<'a> {
     entity: &'a mut Entity,
     services: &'a GameServices,
@@ -238,22 +253,28 @@ mod tests {
     struct MockBehaviour {
         mock_update: MockFn,
         mock_init: MockFn,
+        mock_on_destroy: MockFn,
     }
     impl MockBehaviour {
         pub fn new() -> Self {
             Self {
                 mock_init: MockFn::new(),
                 mock_update: MockFn::new(),
+                mock_on_destroy: MockFn::new(),
             }
         }
     }
     impl CustomBehaviour for MockBehaviour {
-        fn update(&mut self, _utils: BehaviourUtils) {
+        fn update(&mut self, _utils: &BehaviourUtils) {
             self.mock_update.call();
         }
 
-        fn init(&mut self, _utils: BehaviourUtils) {
+        fn init(&mut self, _utils: &BehaviourUtils) {
             self.mock_init.call();
+        }
+
+        fn on_destroy(&mut self, _utils: &BehaviourUtils) {
+            self.mock_on_destroy.call();
         }
     }
 
@@ -400,7 +421,7 @@ mod tests {
             }
 
             #[test]
-            fn update_removes_destroyed_entities_and_does_not_call_update_on_their_behaviours() {
+            fn update_removes_destroyed_entities() {
                 let mut world = make_mock();
                 let services = make_services_mock();
                 let mut commands = make_commands_mock();
@@ -412,51 +433,34 @@ mod tests {
                     .entity
                     .destroy();
 
-                fn get_destroyed_mock_behaviour(world: &World) -> &MockBehaviour {
+                assert_eq!(
                     world
                         .entity_behaviour_map
-                        .get("te2")
-                        .unwrap()
-                        .entity_behaviour_list
-                        .get::<MockBehaviour>(get_behaviour_name!(MockBehaviour))
-                        .unwrap()
-                }
-
-                {
-                    let behaviour = get_destroyed_mock_behaviour(&world);
-
-                    assert_eq!(behaviour.mock_update.num_calls(), 0);
-                    assert_eq!(
-                        world
-                            .entity_behaviour_map
-                            .keys()
-                            .collect::<Vec<&String>>()
-                            .len(),
-                        3
-                    );
-                }
+                        .keys()
+                        .collect::<Vec<&String>>()
+                        .len(),
+                    3
+                );
 
                 world.update(&services, &mut commands, &World::new());
 
-                {
-                    let te1 = world.entity_behaviour_map.get("te1");
-                    let te2 = world.entity_behaviour_map.get("te2");
-                    let te3 = world.entity_behaviour_map.get("te3");
+                let te1 = world.entity_behaviour_map.get("te1");
+                let te2 = world.entity_behaviour_map.get("te2");
+                let te3 = world.entity_behaviour_map.get("te3");
 
-                    assert!(te2.is_none());
+                assert!(te2.is_none());
 
-                    assert!(te1.is_some());
-                    assert!(te3.is_some());
+                assert!(te1.is_some());
+                assert!(te3.is_some());
 
-                    assert_eq!(
-                        world
-                            .entity_behaviour_map
-                            .keys()
-                            .collect::<Vec<&String>>()
-                            .len(),
-                        2
-                    );
-                }
+                assert_eq!(
+                    world
+                        .entity_behaviour_map
+                        .keys()
+                        .collect::<Vec<&String>>()
+                        .len(),
+                    2
+                );
             }
         }
 
