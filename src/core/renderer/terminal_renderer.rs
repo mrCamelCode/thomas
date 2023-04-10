@@ -62,7 +62,9 @@ impl TerminalRenderer {
 
                 if is_entity_on_screen(entity) {
                     if let Some(cell) = render_matrix.get(x, y) {
-                        if layer.is_above(&cell.data().layer_of_value) {
+                        if layer.is_above(&cell.data().layer_of_value)
+                            || layer.is_with(&cell.data().layer_of_value)
+                        {
                             render_matrix.update_cell_at(
                                 x,
                                 y,
@@ -192,10 +194,6 @@ impl TerminalRendererMatrixCell {
 
 fn is_entity_on_screen(entity: &Entity) -> bool {
     entity.transform().coords().x() >= 0.0 && entity.transform().coords().y() >= 0.0
-}
-
-fn is_layer_above_other(layer: u8, other: u8) -> bool {
-    layer >= other
 }
 
 #[cfg(test)]
