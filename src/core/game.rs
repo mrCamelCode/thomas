@@ -61,7 +61,7 @@ impl Game {
 
             if let Err(err) = renderer.render(
                 self.world
-                    .entries()
+                    .entities()
                     .collect::<Vec<(&Entity, &BehaviourList)>>(),
             ) {
                 panic!("Error occurred during render. Source error: {err}");

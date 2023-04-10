@@ -63,7 +63,7 @@ impl World {
             });
     }
 
-    pub fn entries(&self) -> impl Iterator<Item = (&Entity, &BehaviourList)> {
+    pub fn entities(&self) -> impl Iterator<Item = (&Entity, &BehaviourList)> {
         self.entity_behaviour_map
             .iter()
             .map(|(_, behaviour_map_value)| {
@@ -111,7 +111,26 @@ impl World {
         None
     }
 
+    // TODO: Unit test
     pub fn get_overlapping_entities(&self, entity_id: &str) -> Vec<(&Entity, &BehaviourList)> {
+        if let Some((entity, _)) = self.get_entity(entity_id) {
+            return self
+                .entities()
+                .filter_map(|(other_entity, other_behaviours)| {
+                    // Note: This is currently fairly coupled to the idea that things run in the terminal. They're overlapping if their
+                    // rounded position is the same. Should potentially look to decouple that.
+                    if entity.id() != other_entity.id()
+                        && entity.transform().coords().rounded()
+                            == other_entity.transform().coords().rounded()
+                    {
+                        return Some((other_entity, other_behaviours));
+                    }
+
+                    None
+                })
+                .collect::<Vec<(&Entity, &BehaviourList)>>();
+        }
+
         vec![]
     }
 }
@@ -119,7 +138,7 @@ impl Clone for World {
     fn clone(&self) -> Self {
         let mut cloned_map = World::new();
 
-        for (entity, behaviours) in self.entries() {
+        for (entity, behaviours) in self.entities() {
             cloned_map.add(entity.clone(), behaviours.clone());
         }
 
