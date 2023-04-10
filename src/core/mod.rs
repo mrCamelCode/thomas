@@ -1,5 +1,6 @@
 mod behaviours;
 mod data;
+mod message_handler;
 
 mod renderer;
 

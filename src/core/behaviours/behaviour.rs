@@ -293,7 +293,10 @@ impl<'a> BehaviourUtils<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mock_fn::MockFn;
+    use crate::{
+        core::message_handler::{Message, MessageHandler},
+        mock_fn::MockFn,
+    };
     use thomas_derive::Behaviour;
 
     #[derive(Behaviour, Clone)]
