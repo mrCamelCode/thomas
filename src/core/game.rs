@@ -47,7 +47,7 @@ impl Game {
         self.world.add(entity, behaviours);
     }
 
-    pub fn start(&mut self, renderer: &dyn Renderer) {
+    pub fn start(&mut self, renderer: &mut dyn Renderer) {
         renderer.init();
 
         loop {
@@ -91,6 +91,11 @@ impl Game {
                 GameCommand::AddEntity { entity, behaviours } => {
                     self.add_entity(entity, behaviours);
                 }
+                GameCommand::DestroyEntity(entity_id) => {
+                    if let Some((entity, _)) = self.world.get_entity_mut(&entity_id) {
+                        entity.destroy();
+                    }
+                }
                 GameCommand::ClearEntities => {
                     self.world = World::new();
                 }
@@ -124,6 +129,7 @@ pub enum GameCommand {
         entity: Entity,
         behaviours: BehaviourList,
     },
+    DestroyEntity(String),
 }
 
 #[cfg(test)]

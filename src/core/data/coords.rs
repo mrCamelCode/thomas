@@ -23,7 +23,7 @@ impl IntCoords2d {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub struct IntCoords {
     x: i64,
     y: i64,

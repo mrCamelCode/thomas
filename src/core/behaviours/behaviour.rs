@@ -1,5 +1,6 @@
 use dyn_clone::{clone_trait_object, DynClone};
 
+use crate::core::data::Coords;
 use crate::core::{Entity, GameCommandQueue, GameServices};
 use std::any::Any;
 use std::collections::HashMap;
@@ -41,7 +42,7 @@ impl World {
             .retain(|_, entity_behaviour_map_val| {
                 let is_destroyed = entity_behaviour_map_val.entity.is_destroyed();
 
-                let utils = BehaviourUtils::new(
+                let mut utils = BehaviourUtils::new(
                     &mut entity_behaviour_map_val.entity,
                     game_services,
                     game_commands,
@@ -51,11 +52,11 @@ impl World {
                 if is_destroyed {
                     entity_behaviour_map_val
                         .entity_behaviour_list
-                        .destroy(&utils);
+                        .destroy(&mut utils);
                 } else {
                     entity_behaviour_map_val
                         .entity_behaviour_list
-                        .update(&utils)
+                        .update(&mut utils)
                 }
 
                 !entity_behaviour_map_val.entity.is_destroyed()
@@ -73,6 +74,17 @@ impl World {
             })
     }
 
+    pub fn entries_mut(&mut self) -> impl Iterator<Item = (&mut Entity, &mut BehaviourList)> {
+        self.entity_behaviour_map
+            .iter_mut()
+            .map(|(_, behaviour_map_value)| {
+                (
+                    &mut behaviour_map_value.entity,
+                    &mut behaviour_map_value.entity_behaviour_list,
+                )
+            })
+    }
+
     /// Retrieves an Entity and its Behaviours by the Entity's ID. This is an *O(1)* operation.
     /// Destroyed entities are ignored and considered `None`.
     pub fn get_entity(&self, entity_id: &str) -> Option<(&Entity, &BehaviourList)> {
@@ -85,6 +97,22 @@ impl World {
         }
 
         None
+    }
+
+    pub fn get_entity_mut(&mut self, entity_id: &str) -> Option<(&mut Entity, &mut BehaviourList)> {
+        if let Some(entry) = self.entity_behaviour_map.get_mut(entity_id) {
+            return if !entry.entity.is_destroyed() {
+                Some((&mut entry.entity, &mut entry.entity_behaviour_list))
+            } else {
+                None
+            };
+        }
+
+        None
+    }
+
+    pub fn get_overlapping_entities(&self, entity_id: &str) -> Vec<(&Entity, &BehaviourList)> {
+        vec![]
     }
 }
 impl Clone for World {
@@ -140,7 +168,7 @@ impl BehaviourList {
         None
     }
 
-    pub(crate) fn update(&mut self, utils: &BehaviourUtils) {
+    pub(crate) fn update(&mut self, utils: &mut BehaviourUtils) {
         self.behaviours.values_mut().for_each(|val| {
             if val.has_been_init {
                 val.custom_behaviour.update(utils);
@@ -152,7 +180,7 @@ impl BehaviourList {
         });
     }
 
-    pub(crate) fn destroy(&mut self, utils: &BehaviourUtils) {
+    pub(crate) fn destroy(&mut self, utils: &mut BehaviourUtils) {
         self.behaviours.values_mut().for_each(|behaviour| {
             behaviour.custom_behaviour.on_destroy(utils);
         });
@@ -190,12 +218,12 @@ pub trait Behaviour {
 
 pub trait CustomBehaviour: Behaviour + DynClone {
     /// Invoked on the first frame this behaviour is alive.
-    fn init(&mut self, _utils: &BehaviourUtils) {}
+    fn init(&mut self, _utils: &mut BehaviourUtils) {}
 
     /// Invoked on every frame after the first init.
-    fn update(&mut self, _utils: &BehaviourUtils) {}
+    fn update(&mut self, _utils: &mut BehaviourUtils) {}
 
-    fn on_destroy(&mut self, _utils: &BehaviourUtils) {}
+    fn on_destroy(&mut self, _utils: &mut BehaviourUtils) {}
 }
 clone_trait_object!(CustomBehaviour);
 
@@ -265,15 +293,15 @@ mod tests {
         }
     }
     impl CustomBehaviour for MockBehaviour {
-        fn update(&mut self, _utils: &BehaviourUtils) {
+        fn update(&mut self, _utils: &mut BehaviourUtils) {
             self.mock_update.call();
         }
 
-        fn init(&mut self, _utils: &BehaviourUtils) {
+        fn init(&mut self, _utils: &mut BehaviourUtils) {
             self.mock_init.call();
         }
 
-        fn on_destroy(&mut self, _utils: &BehaviourUtils) {
+        fn on_destroy(&mut self, _utils: &mut BehaviourUtils) {
             self.mock_on_destroy.call();
         }
     }
