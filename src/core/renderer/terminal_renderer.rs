@@ -1,4 +1,5 @@
 use std::{
+    error::Error,
     io::stdout,
     io::Write,
     ops::{Deref, DerefMut},
@@ -78,7 +79,6 @@ impl TerminalRenderer {
         render_matrix
     }
 
-    // TODO: Unit test
     fn outline_render_string(&self, render_string: String) -> String {
         let make_horizontal_outline = || -> String {
             (0..self.config.screen_resolution.width())
@@ -137,16 +137,20 @@ impl Renderer for TerminalRenderer {
         }
     }
 
-    fn render(&self, entities: Vec<(&Entity, &BehaviourList)>) {
-        execute!(stdout(), Clear(ClearType::All));
+    fn render(&self, entities: Vec<(&Entity, &BehaviourList)>) -> Result<(), Box<dyn Error>> {
+        execute!(stdout(), Clear(ClearType::All))?;
 
         let draw_string = self.produce_render_string(&entities);
 
-        write!(stdout(), "{}", draw_string);
+        write!(stdout(), "{}", draw_string)?;
+
+        Ok(())
     }
 
-    fn cleanup(&self) {
-        disable_raw_mode();
+    fn cleanup(&self) -> Result<(), Box<dyn Error>> {
+        disable_raw_mode()?;
+
+        Ok(())
     }
 }
 
@@ -329,7 +333,7 @@ mod tests {
                         .collect::<Vec<(&Entity, &BehaviourList)>>(),
                 );
 
-                assert_eq!(result, "5  \r\n ^ \r\n  @")
+                assert_eq!(result, "/===\\\r\n|5  |\r\n| ^ |\r\n|  @|\r\n\\===/");
             }
 
             #[test]
@@ -369,7 +373,7 @@ mod tests {
                         .collect::<Vec<(&Entity, &BehaviourList)>>(),
                 );
 
-                assert_eq!(result, "5  \r\n   \r\n  ^")
+                assert_eq!(result, "/===\\\r\n|5  |\r\n|   |\r\n|  ^|\r\n\\===/");
             }
         }
     }
