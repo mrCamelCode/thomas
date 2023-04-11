@@ -290,10 +290,10 @@ impl Clone for BehaviourMetaData {
 
 #[allow(dead_code)]
 pub struct BehaviourUtils<'a> {
-    entity: &'a mut Entity,
-    services: &'a GameServices,
-    commands: &'a mut GameCommandQueue,
-    world: &'a World,
+    pub entity: &'a mut Entity,
+    pub services: &'a GameServices,
+    pub commands: &'a mut GameCommandQueue,
+    pub world: &'a World,
 }
 impl<'a> BehaviourUtils<'a> {
     pub(crate) fn new(

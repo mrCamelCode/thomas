@@ -6,8 +6,8 @@ use std::{
 };
 
 use crossterm::{
-    execute,
-    terminal::{disable_raw_mode, enable_raw_mode, Clear, ClearType},
+    cursor, execute,
+    terminal::{self, disable_raw_mode, enable_raw_mode, Clear, ClearType, SetSize},
 };
 
 use crate::{
@@ -25,16 +25,24 @@ const VERTICAL_OUTLINE_DELIMITER: &str = "|";
 const NEWLINE_DELIMITER: &str = "\r\n";
 
 pub struct TerminalRendererConfig {
-    screen_resolution: Dimensions2d,
-    include_screen_outline: bool,
+    pub screen_resolution: Dimensions2d,
+    pub include_screen_outline: bool,
 }
 
 pub struct TerminalRenderer {
+    initial_terminal_size: (u16, u16),
     config: TerminalRendererConfig,
+    prev_render: String,
+    is_initial_render: bool,
 }
 impl TerminalRenderer {
     pub fn new(config: TerminalRendererConfig) -> Self {
-        TerminalRenderer { config }
+        TerminalRenderer {
+            initial_terminal_size: (0, 0),
+            config,
+            prev_render: String::new(),
+            is_initial_render: true,
+        }
     }
 
     fn make_render_matrix(
@@ -46,8 +54,8 @@ impl TerminalRenderer {
         entities
             .iter()
             .filter_map(|(entity, behaviours)| {
-                if let Some(terminal_renderable_behaviour) =
-                    behaviours.get_behaviour::<TerminalRenderable>(get_behaviour_name!(TerminalRenderable))
+                if let Some(terminal_renderable_behaviour) = behaviours
+                    .get_behaviour::<TerminalRenderable>(get_behaviour_name!(TerminalRenderable))
                 {
                     Some((entity, terminal_renderable_behaviour))
                 } else {
@@ -121,16 +129,49 @@ impl TerminalRenderer {
             curr_row = row;
         }
 
-        if self.config.include_screen_outline {
-            self.outline_render_string(render_string)
-        } else {
-            render_string
-        }
+        format!(
+            "{}{}{}",
+            NEWLINE_DELIMITER,
+            if self.config.include_screen_outline {
+                self.outline_render_string(render_string)
+            } else {
+                render_string
+            },
+            NEWLINE_DELIMITER
+        )
     }
 }
 
 impl Renderer for TerminalRenderer {
-    fn init(&self) {
+    fn init(&mut self) {
+        if let Ok(size) = terminal::size() {
+            self.initial_terminal_size = size;
+        } else {
+            panic!("TerminalRenderer could not get the terminal's starting size.");
+        }
+
+        if self.config.screen_resolution.height() > u16::MAX as u64
+            || self.config.screen_resolution.width() > u16::MAX as u64
+        {
+            panic!("TerminalRenderer's screen resolution is too large. Neither the width nor height can be greater than {}", u16::MAX);
+        }
+
+        if let Err(e) = execute!(
+            stdout(),
+            Clear(ClearType::All),
+            SetSize(
+                self.config.screen_resolution.width() as u16,
+                self.config.screen_resolution.height() as u16
+            ),
+            cursor::Hide,
+            cursor::MoveTo(0, 0),
+        ) {
+            panic!(
+                "TerminalRenderer could not do initial setup of game screen. Error: {}",
+                e
+            );
+        }
+
         if let Err(e) = enable_raw_mode() {
             panic!(
                 "TerminalRenderer could not set raw mode, cannot continue. Error: {}",
@@ -139,17 +180,44 @@ impl Renderer for TerminalRenderer {
         }
     }
 
-    fn render(&self, entities: Vec<(&Entity, &BehaviourList)>) -> Result<(), Box<dyn Error>> {
-        execute!(stdout(), Clear(ClearType::All))?;
+    fn render(&mut self, entities: Vec<(&Entity, &BehaviourList)>) -> Result<(), Box<dyn Error>> {
+        let new_render_string = self.produce_render_string(&entities);
 
-        let draw_string = self.produce_render_string(&entities);
+        if self.is_initial_render {
+            write!(stdout(), "{}", new_render_string)?;
 
-        write!(stdout(), "{}", draw_string)?;
+            self.is_initial_render = false;
+        } else {
+            let new_render_lines = new_render_string
+                .split(NEWLINE_DELIMITER)
+                .collect::<Vec<&str>>();
+            let prev_render_lines = self
+                .prev_render
+                .split(NEWLINE_DELIMITER)
+                .collect::<Vec<&str>>();
+
+            for row in 0..new_render_lines.len() {
+                if new_render_lines[row] != prev_render_lines[row] {
+                    execute!(stdout(), cursor::MoveTo(0, row as u16))?;
+                    write!(stdout(), "{}", new_render_lines[row].replace("\r\n", ""))?;
+                    execute!(stdout(), Clear(ClearType::UntilNewLine))?;
+                }
+            }
+        }
+
+        self.prev_render = new_render_string;
 
         Ok(())
     }
 
-    fn cleanup(&self) -> Result<(), Box<dyn Error>> {
+    fn cleanup(&mut self) -> Result<(), Box<dyn Error>> {
+        execute!(
+            stdout(),
+            SetSize(self.initial_terminal_size.0, self.initial_terminal_size.1),
+            cursor::MoveTo(0, self.initial_terminal_size.1),
+            cursor::Show,
+        )?;
+
         disable_raw_mode()?;
 
         Ok(())
@@ -254,7 +322,7 @@ mod tests {
                         .collect::<Vec<(&Entity, &BehaviourList)>>(),
                 );
 
-                assert_eq!(result, "5  \r\n ^ \r\n  @")
+                assert_eq!(result, "\r\n5  \r\n ^ \r\n  @\r\n")
             }
 
             #[test]
@@ -303,7 +371,7 @@ mod tests {
                         .collect::<Vec<(&Entity, &BehaviourList)>>(),
                 );
 
-                assert_eq!(result, "5  \r\n   \r\n  ^")
+                assert_eq!(result, "\r\n5  \r\n   \r\n  ^\r\n")
             }
         }
 
@@ -358,7 +426,10 @@ mod tests {
                         .collect::<Vec<(&Entity, &BehaviourList)>>(),
                 );
 
-                assert_eq!(result, "/===\\\r\n|5  |\r\n| ^ |\r\n|  @|\r\n\\===/");
+                assert_eq!(
+                    result,
+                    "\r\n/===\\\r\n|5  |\r\n| ^ |\r\n|  @|\r\n\\===/\r\n"
+                );
             }
 
             #[test]
@@ -407,7 +478,10 @@ mod tests {
                         .collect::<Vec<(&Entity, &BehaviourList)>>(),
                 );
 
-                assert_eq!(result, "/===\\\r\n|5  |\r\n|   |\r\n|  ^|\r\n\\===/");
+                assert_eq!(
+                    result,
+                    "\r\n/===\\\r\n|5  |\r\n|   |\r\n|  ^|\r\n\\===/\r\n"
+                );
             }
         }
     }

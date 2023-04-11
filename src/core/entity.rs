@@ -10,7 +10,6 @@ fn get_id() -> usize {
     ID_COUNTER.fetch_add(1, Ordering::Relaxed)
 }
 
-#[derive(Clone)]
 /// Representation of an entity in the game world. All objects that exist in the game world are Entities.
 pub struct Entity {
     id: String,
@@ -55,6 +54,16 @@ impl Entity {
     }
     pub fn transform_mut(&mut self) -> &mut Transform {
         self.transform.as_mut()
+    }
+}
+impl Clone for Entity {
+    fn clone(&self) -> Self {
+        Self {
+            id: format!("{}-{}", self.id.clone(), get_id()),
+            name: self.name.clone(),
+            transform: self.transform.clone(),
+            is_destroyed: self.is_destroyed.clone(),
+        }
     }
 }
 

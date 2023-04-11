@@ -26,7 +26,7 @@ impl GameServices {
 }
 
 pub struct GameConfig {
-    press_escape_to_quit: bool,
+    pub press_escape_to_quit: bool,
 }
 
 pub struct Game {
