@@ -114,12 +114,15 @@ impl World {
     // TODO: Unit test
     pub fn get_overlapping_entities(&self, entity_id: &str) -> Vec<(&Entity, &BehaviourList)> {
         if let Some((entity, _)) = self.get_entity(entity_id) {
+            if entity.is_destroyed() {
+                return vec![];
+            }
+
             return self
                 .entities()
                 .filter_map(|(other_entity, other_behaviours)| {
-                    // Note: This is currently fairly coupled to the idea that things run in the terminal. They're overlapping if their
-                    // rounded position is the same. Should potentially look to decouple that.
                     if entity.id() != other_entity.id()
+                        && !other_entity.is_destroyed()
                         && entity.transform().coords().rounded()
                             == other_entity.transform().coords().rounded()
                     {
