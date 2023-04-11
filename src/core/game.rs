@@ -1,6 +1,8 @@
+use std::any::Any;
+
 use device_query::Keycode;
 
-use super::{renderer::Renderer, BehaviourList, Entity, Input, Time, World};
+use super::{message::Message, renderer::Renderer, BehaviourList, Entity, Input, Time, World};
 
 pub struct GameServices {
     input: Input,
@@ -99,6 +101,17 @@ impl Game {
                 GameCommand::ClearEntities => {
                     self.world = World::new();
                 }
+                GameCommand::SendMessage {
+                    entity_id,
+                    behaviour_name,
+                    message,
+                } => {
+                    if let Some((_, behaviours)) = self.world.get_entity_mut(&entity_id) {
+                        if let Some(behaviour) = behaviours.get_mut(&behaviour_name) {
+                            behaviour.on_message(message);
+                        }
+                    }
+                }
                 GameCommand::Quit => self.should_quit = true,
             }
         }
@@ -130,6 +143,11 @@ pub enum GameCommand {
         behaviours: BehaviourList,
     },
     DestroyEntity(String),
+    SendMessage {
+        entity_id: String,
+        behaviour_name: String,
+        message: Message<Box<dyn Any>>,
+    },
 }
 
 #[cfg(test)]

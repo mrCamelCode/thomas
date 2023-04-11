@@ -1,6 +1,6 @@
 use dyn_clone::{clone_trait_object, DynClone};
 
-use crate::core::data::Coords;
+use crate::core::message::Message;
 use crate::core::{Entity, GameCommandQueue, GameServices};
 use std::any::Any;
 use std::collections::HashMap;
@@ -179,12 +179,28 @@ impl BehaviourList {
         }
     }
 
-    pub fn get<T>(&self, name: &str) -> Option<&T>
+    pub fn get_behaviour<T>(&self, name: &str) -> Option<&T>
     where
         T: CustomBehaviour + 'static,
     {
         if let Some(behaviour) = self.behaviours.get(name) {
             return behaviour.custom_behaviour.as_any().downcast_ref::<T>();
+        }
+
+        None
+    }
+
+    pub fn get(&self, name: &str) -> Option<&Box<dyn CustomBehaviour>> {
+        if let Some(behaviour_meta) = self.behaviours.get(name) {
+            return Some(&behaviour_meta.custom_behaviour);
+        }
+
+        None
+    }
+
+    pub fn get_mut(&mut self, name: &str) -> Option<&mut dyn CustomBehaviour> {
+        if let Some(behaviour_meta) = self.behaviours.get_mut(name) {
+            return Some(behaviour_meta.custom_behaviour.as_mut());
         }
 
         None
@@ -246,6 +262,8 @@ pub trait CustomBehaviour: Behaviour + DynClone {
     fn update(&mut self, _utils: &mut BehaviourUtils) {}
 
     fn on_destroy(&mut self, _utils: &mut BehaviourUtils) {}
+
+    fn on_message(&mut self, _message: Message<Box<dyn Any>>) {}
 }
 clone_trait_object!(CustomBehaviour);
 
@@ -296,10 +314,7 @@ impl<'a> BehaviourUtils<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        core::message_handler::{Message, MessageHandler},
-        mock_fn::MockFn,
-    };
+    use crate::mock_fn::MockFn;
     use thomas_derive::Behaviour;
 
     #[derive(Behaviour, Clone)]
@@ -371,7 +386,7 @@ mod tests {
                     .get("te1")
                     .unwrap()
                     .entity_behaviour_list
-                    .get::<MockBehaviour>(get_behaviour_name!(MockBehaviour))
+                    .get_behaviour::<MockBehaviour>(get_behaviour_name!(MockBehaviour))
                     .unwrap()
             }
 

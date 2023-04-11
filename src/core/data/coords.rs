@@ -5,6 +5,7 @@ pub struct IntCoords2d {
     x: i64,
     y: i64,
 }
+#[allow(dead_code)]
 impl IntCoords2d {
     pub fn new(x: i64, y: i64) -> Self {
         Self { x, y }

@@ -47,7 +47,7 @@ impl TerminalRenderer {
             .iter()
             .filter_map(|(entity, behaviours)| {
                 if let Some(terminal_renderable_behaviour) =
-                    behaviours.get::<TerminalRenderable>(get_behaviour_name!(TerminalRenderable))
+                    behaviours.get_behaviour::<TerminalRenderable>(get_behaviour_name!(TerminalRenderable))
                 {
                     Some((entity, terminal_renderable_behaviour))
                 } else {
