@@ -234,6 +234,14 @@ impl BehaviourList {
     pub fn remove(&mut self, behaviour_name: &str) {
         self.behaviours.remove(behaviour_name);
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &Box<dyn CustomBehaviour>> {
+        self.behaviours.iter().map(|meta_data| &meta_data.1.custom_behaviour)
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Box<dyn CustomBehaviour>> {
+        self.behaviours.iter_mut().map(|meta_data| &mut meta_data.1.custom_behaviour)
+    }
 }
 impl Clone for BehaviourList {
     fn clone(&self) -> Self {
@@ -253,17 +261,17 @@ pub trait Behaviour {
     fn name(&self) -> &'static str;
     fn as_any(&self) -> &dyn Any;
 }
-
+#[allow(unused_variables)]
 pub trait CustomBehaviour: Behaviour + DynClone {
     /// Invoked on the first frame this behaviour is alive.
-    fn init(&mut self, _utils: &mut BehaviourUtils) {}
+    fn init(&mut self, utils: &mut BehaviourUtils) {}
 
     /// Invoked on every frame after the first init.
-    fn update(&mut self, _utils: &mut BehaviourUtils) {}
+    fn update(&mut self, utils: &mut BehaviourUtils) {}
 
-    fn on_destroy(&mut self, _utils: &mut BehaviourUtils) {}
+    fn on_destroy(&mut self, utils: &mut BehaviourUtils) {}
 
-    fn on_message(&mut self, _message: Message<Box<dyn Any>>) {}
+    fn on_message(&mut self, message: &Message<Box<dyn Any>>) {}
 }
 clone_trait_object!(CustomBehaviour);
 

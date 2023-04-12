@@ -101,14 +101,10 @@ impl Game {
                 GameCommand::ClearEntities => {
                     self.world = World::new();
                 }
-                GameCommand::SendMessage {
-                    entity_id,
-                    behaviour_name,
-                    message,
-                } => {
+                GameCommand::SendMessage { entity_id, message } => {
                     if let Some((_, behaviours)) = self.world.get_entity_mut(&entity_id) {
-                        if let Some(behaviour) = behaviours.get_mut(&behaviour_name) {
-                            behaviour.on_message(message);
+                        for behaviour in behaviours.iter_mut() {
+                            behaviour.on_message(&message);
                         }
                     }
                 }
@@ -145,7 +141,6 @@ pub enum GameCommand {
     DestroyEntity(String),
     SendMessage {
         entity_id: String,
-        behaviour_name: String,
         message: Message<Box<dyn Any>>,
     },
 }

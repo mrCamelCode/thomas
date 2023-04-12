@@ -255,7 +255,7 @@ impl TerminalRendererMatrixCell {
     fn default() -> Self {
         Self {
             display: ' ',
-            layer_of_value: Layer::base(),
+            layer_of_value: Layer::furthest_background(),
         }
     }
 }
