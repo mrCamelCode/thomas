@@ -1,13 +1,13 @@
 [package]
-name = "thomas"
+name = "thomas_derive"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+proc-macro = true
+
 [dependencies]
-crossterm = "0.26.1"
-device_query = "1.1.2"
-dyn-clone = "1.0.11"
-mockall = "0.11.3"
-thomas_derive = { path = "./thomas_derive" }
+syn = "1.0"
+quote = "1.0"

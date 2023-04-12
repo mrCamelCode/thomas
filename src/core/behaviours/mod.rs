@@ -1,5 +1,11 @@
 mod behaviour;
-mod behaviour_list;
+mod renderable;
+mod terminal_renderable;
+
+mod terminal_collider;
 
 pub use behaviour::*;
-pub use behaviour_list::*;
+pub use renderable::*;
+pub use terminal_renderable::*;
+
+pub use terminal_collider::*;
