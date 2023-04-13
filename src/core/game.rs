@@ -1,8 +1,10 @@
-use std::any::Any;
+use std::{any::Any, thread, time::Duration};
 
 use device_query::Keycode;
 
-use super::{message::Message, renderer::Renderer, BehaviourList, Entity, Input, Time, World};
+use super::{
+    message::Message, renderer::Renderer, BehaviourList, Entity, Input, Time, Timer, World,
+};
 
 pub struct GameServices {
     input: Input,
@@ -27,6 +29,8 @@ impl GameServices {
 
 pub struct GameConfig {
     pub press_escape_to_quit: bool,
+    /// The maximum times per second the game's main loop is allowed to run. A value of 0 indicates an uncapped framerate.
+    pub max_frame_rate: u16,
 }
 
 pub struct Game {
@@ -52,7 +56,17 @@ impl Game {
     pub fn start(&mut self, renderer: &mut dyn Renderer) {
         renderer.init();
 
+        let mut frame_timer = Timer::new();
+
+        let minimum_frame_time = if self.config.max_frame_rate > 0 {
+            1000 / self.config.max_frame_rate
+        } else {
+            0
+        };
+
         loop {
+            frame_timer.restart();
+
             let mut command_queue = GameCommandQueue::new();
 
             self.game_services.input.update();
@@ -79,6 +93,13 @@ impl Game {
 
             if self.should_quit {
                 break;
+            }
+
+            let elapsed_millis = frame_timer.elapsed_millis();
+            if elapsed_millis < minimum_frame_time as u128 {
+                thread::sleep(Duration::from_millis(
+                    (minimum_frame_time as u128 - elapsed_millis) as u64,
+                ));
             }
         }
 

@@ -12,7 +12,7 @@ fn get_id() -> usize {
 
 /// Representation of an entity in the game world. All objects that exist in the game world are Entities.
 pub struct Entity {
-    id: String,
+    pub(crate) id: String,
     name: String,
     transform: Transform,
     is_destroyed: bool,
@@ -33,7 +33,7 @@ impl Entity {
         }
     }
 
-    pub fn destroy(&mut self) {
+    pub(crate) fn destroy(&mut self) {
         self.is_destroyed = true;
     }
 
@@ -59,6 +59,9 @@ impl Entity {
 impl Clone for Entity {
     fn clone(&self) -> Self {
         Self {
+            // Assign a unique clone ID to this new clone of the entity to avoid having it overlap
+            // with the existing entity. This allows someone to make an instance of an entity that
+            // acts like a prefab they can then clone to easily make more copies of that prefab.
             id: format!("{}-{}", self.id.clone(), get_id()),
             name: self.name.clone(),
             transform: self.transform.clone(),

@@ -74,7 +74,7 @@ impl World {
             })
     }
 
-    pub fn entries_mut(&mut self) -> impl Iterator<Item = (&mut Entity, &mut BehaviourList)> {
+    pub fn entities_mut(&mut self) -> impl Iterator<Item = (&mut Entity, &mut BehaviourList)> {
         self.entity_behaviour_map
             .iter_mut()
             .map(|(_, behaviour_map_value)| {
@@ -139,13 +139,18 @@ impl World {
 }
 impl Clone for World {
     fn clone(&self) -> Self {
-        let mut cloned_map = World::new();
+        let mut cloned_world = World::new();
 
         for (entity, behaviours) in self.entities() {
-            cloned_map.add(entity.clone(), behaviours.clone());
+            let mut entity_clone = entity.clone();
+            // When we clone an entire world, we don't want the entities to get unique clone IDs. We want to
+            // clone the world exactly as it is.
+            entity_clone.id = entity.id.clone();
+
+            cloned_world.add(entity_clone, behaviours.clone());
         }
 
-        cloned_map
+        cloned_world
     }
 }
 
@@ -206,6 +211,13 @@ impl BehaviourList {
         None
     }
 
+    pub fn has_behaviour<T>(&self, behaviour_name: &str) -> bool
+    where
+        T: CustomBehaviour + 'static,
+    {
+        self.get_behaviour::<T>(behaviour_name).is_some()
+    }
+
     pub(crate) fn update(&mut self, utils: &mut BehaviourUtils) {
         self.behaviours.values_mut().for_each(|val| {
             if val.has_been_init {
@@ -236,11 +248,15 @@ impl BehaviourList {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Box<dyn CustomBehaviour>> {
-        self.behaviours.iter().map(|meta_data| &meta_data.1.custom_behaviour)
+        self.behaviours
+            .iter()
+            .map(|meta_data| &meta_data.1.custom_behaviour)
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut Box<dyn CustomBehaviour>> {
-        self.behaviours.iter_mut().map(|meta_data| &mut meta_data.1.custom_behaviour)
+        self.behaviours
+            .iter_mut()
+            .map(|meta_data| &mut meta_data.1.custom_behaviour)
     }
 }
 impl Clone for BehaviourList {
@@ -576,6 +592,40 @@ mod tests {
                 world.add(entity, BehaviourList::new());
 
                 assert!(world.get_entity("test 1").is_none());
+            }
+        }
+
+        mod clone {
+            use crate::core::Transform;
+
+            use super::*;
+
+            #[test]
+            fn entities_and_behaviours_get_cloned_over() {
+                let mut world = World::new();
+
+                world.add(
+                    Entity::new_with_id("E1", Transform::default(), "e1"),
+                    BehaviourList::new(),
+                );
+                world.add(
+                    Entity::new_with_id("E2", Transform::default(), "e2"),
+                    BehaviourList::from(vec![Box::new(MockBehaviour::new())]),
+                );
+
+                let clone = world.clone();
+
+                let e1 = clone.get_entity("e1");
+                let e2 = clone.get_entity("e2");
+
+                assert!(e1.is_some());
+                assert!(e2.is_some());
+
+                assert!(e2
+                    .unwrap()
+                    .1
+                    .get_behaviour::<MockBehaviour>(get_behaviour_name!(MockBehaviour))
+                    .is_some());
             }
         }
     }
