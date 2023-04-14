@@ -74,6 +74,31 @@ impl World {
             })
     }
 
+    pub fn entities_with_behaviour<'a, T>(
+        &'a self,
+        behaviour_name: &'a str,
+    ) -> impl Iterator<Item = (&'a Entity, &'a BehaviourList, &'a T)> + '_
+    where
+        T: CustomBehaviour + 'static,
+    {
+        self.entity_behaviour_map
+            .iter()
+            .filter_map(|(_, behaviour_map_value)| {
+                if let Some(behaviour) = behaviour_map_value
+                    .entity_behaviour_list
+                    .get_behaviour::<T>(behaviour_name)
+                {
+                    return Some((
+                        &behaviour_map_value.entity,
+                        &behaviour_map_value.entity_behaviour_list,
+                        behaviour,
+                    ));
+                }
+
+                None
+            })
+    }
+
     pub fn entities_mut(&mut self) -> impl Iterator<Item = (&mut Entity, &mut BehaviourList)> {
         self.entity_behaviour_map
             .iter_mut()

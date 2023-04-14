@@ -1,7 +1,6 @@
 mod behaviours;
 mod data;
 mod message;
-mod prefab_factory;
 
 mod renderer;
 
@@ -17,6 +16,5 @@ pub use entity::*;
 pub use game::*;
 pub use input::*;
 pub use message::*;
-pub use prefab_factory::*;
 pub use renderer::*;
 pub use time::*;

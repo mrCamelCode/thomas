@@ -52,7 +52,7 @@ impl IntCoords {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, PartialOrd)]
 pub struct Coords {
     x: f64,
     y: f64,
@@ -140,7 +140,6 @@ impl Add for Coords {
         }
     }
 }
-
 impl Sub for Coords {
     type Output = Coords;
 
@@ -152,7 +151,6 @@ impl Sub for Coords {
         }
     }
 }
-
 impl AddAssign for Coords {
     fn add_assign(&mut self, rhs: Self) {
         self.x += rhs.x;
@@ -160,7 +158,6 @@ impl AddAssign for Coords {
         self.z += rhs.z;
     }
 }
-
 impl SubAssign for Coords {
     fn sub_assign(&mut self, rhs: Self) {
         self.x -= rhs.x;
