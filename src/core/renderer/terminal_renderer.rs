@@ -24,6 +24,8 @@ const HORIZONTAL_OUTLINE_DELIMITER: &str = "=";
 const VERTICAL_OUTLINE_DELIMITER: &str = "|";
 const NEWLINE_DELIMITER: &str = "\r\n";
 
+const TERMINAL_DIMENSIONS_PADDING: u16 = 10;
+
 pub struct TerminalRendererConfig {
     pub screen_resolution: Dimensions2d,
     pub include_screen_outline: bool,
@@ -150,18 +152,20 @@ impl Renderer for TerminalRenderer {
             panic!("TerminalRenderer could not get the terminal's starting size.");
         }
 
-        if self.config.screen_resolution.height() > u16::MAX as u64
-            || self.config.screen_resolution.width() > u16::MAX as u64
+        if self.config.screen_resolution.height() + TERMINAL_DIMENSIONS_PADDING as u64
+            > u16::MAX as u64
+            || self.config.screen_resolution.width() + TERMINAL_DIMENSIONS_PADDING as u64
+                > u16::MAX as u64
         {
-            panic!("TerminalRenderer's screen resolution is too large. Neither the width nor height can be greater than {}", u16::MAX);
+            panic!("TerminalRenderer's screen resolution is too large. Neither the width nor height can be greater than {}", u16::MAX - TERMINAL_DIMENSIONS_PADDING);
         }
 
         if let Err(e) = execute!(
             stdout(),
             Clear(ClearType::All),
             SetSize(
-                self.config.screen_resolution.width() as u16,
-                self.config.screen_resolution.height() as u16
+                self.config.screen_resolution.width() as u16 + TERMINAL_DIMENSIONS_PADDING,
+                self.config.screen_resolution.height() as u16 + TERMINAL_DIMENSIONS_PADDING
             ),
             cursor::Hide,
             cursor::MoveTo(0, 0),
