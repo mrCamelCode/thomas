@@ -1,3 +1,5 @@
 pub trait Component {
-  fn name() -> String;
+    fn name() -> &'static str
+    where
+        Self: Sized;
 }

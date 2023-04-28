@@ -1,4 +1,8 @@
-pub mod core;
+mod core;
+pub use crate::core::*;
+
+mod components;
+pub use components::*;
 
 pub use thomas_derive::*;
 
