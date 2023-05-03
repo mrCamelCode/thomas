@@ -1,10 +1,10 @@
 use std::{
     ops::Deref,
-    sync::atomic::{AtomicU64, AtomicUsize},
+    sync::atomic::{AtomicU64},
 };
 
-#[derive(PartialEq, Eq, Hash, PartialOrd, Ord, Copy, Clone)]
-pub struct Entity(u64);
+#[derive(PartialEq, Eq, Hash, PartialOrd, Ord, Copy, Clone, Debug)]
+pub struct Entity(pub(crate) u64);
 impl Entity {
     pub fn new() -> Self {
         static ID_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -19,5 +19,22 @@ impl Deref for Entity {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+#[cfg(test)]
+mod tests { 
+    use super::*;
+
+    mod test_new {
+        use super::*;
+
+        #[test]
+        fn new_entities_have_different_ids() {
+            let e1 = Entity::new();
+            let e2 = Entity::new();
+
+            assert_ne!(e1.0, e2.0);
+        }
     }
 }

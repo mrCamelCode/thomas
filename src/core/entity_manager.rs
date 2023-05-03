@@ -54,14 +54,14 @@ impl EntityManager {
         None
     }
 
-    pub fn remove_entity(&mut self, entity: Entity) {
-        if let Some(components) = self.entities_to_components.remove(&entity) {
-            for component in components.values() {
+    pub fn remove_entity(&mut self, entity: &Entity) {
+        if let Some(component_map) = self.entities_to_components.remove(entity) {
+            for component in component_map.values() {
                 if let Some(entity_set) = self
                     .components_to_entities
                     .get_mut(component.component_name())
                 {
-                    entity_set.remove(&entity);
+                    entity_set.remove(entity);
                 }
             }
         }
@@ -158,15 +158,14 @@ mod tests {
         fn returns_none_and_does_nothing_when_entity_already_exists() {
             let mut em = EntityManager::new();
 
-            let entity = Entity::new();
-            let entity_copy = entity.clone();
+            let entity = Entity(1);
+            let entity_copy = Entity(1);
 
-            let result1 = em
-                .add_entity(entity, vec![])
+            em.add_entity(entity, vec![])
                 .expect("Entity addition should return ID of added entity.");
             let result2 = em.add_entity(entity_copy, vec![]);
 
-            let component_map = em.entities_to_components.get(&result1);
+            let component_map = em.entities_to_components.get(&Entity(1));
 
             assert!(result2.is_none());
 
@@ -240,13 +239,267 @@ mod tests {
 
     mod test_remove_entity {
         use super::*;
+
+        #[test]
+        fn removing_a_nonexistent_entity_does_nothing() {
+            let mut em = EntityManager::new();
+
+            em.components_to_entities.insert(
+                TestComponent::name().to_string(),
+                BTreeSet::from([Entity(1)]),
+            );
+            em.entities_to_components.insert(
+                Entity(1),
+                HashMap::from([(
+                    TestComponent::name().to_string(),
+                    Box::new(TestComponent { prop1: 1 }) as Box<dyn Component>,
+                )]),
+            );
+
+            em.remove_entity(&Entity(2));
+
+            let entity_set = em
+                .components_to_entities
+                .get(TestComponent::name())
+                .unwrap();
+            let component_map = em.entities_to_components.get(&Entity(1)).unwrap();
+
+            assert_eq!(entity_set.len(), 1);
+            assert!(entity_set.contains(&Entity(1)));
+
+            assert_eq!(component_map.len(), 1);
+            assert_eq!(
+                TestComponent::coerce(component_map.get(TestComponent::name()).unwrap())
+                    .unwrap()
+                    .prop1,
+                1
+            );
+        }
+
+        #[test]
+        fn can_remove_an_existing_entity() {
+            let mut em = EntityManager::new();
+
+            em.components_to_entities.insert(
+                TestComponent::name().to_string(),
+                BTreeSet::from([Entity(1)]),
+            );
+            em.entities_to_components.insert(
+                Entity(1),
+                HashMap::from([(
+                    TestComponent::name().to_string(),
+                    Box::new(TestComponent { prop1: 1 }) as Box<dyn Component>,
+                )]),
+            );
+
+            em.remove_entity(&Entity(1));
+
+            let entity_set = em
+                .components_to_entities
+                .get(TestComponent::name())
+                .expect("TestComponent entry wasn't wiped just because there are no longer any Entities with that component.");
+            let component_map = em.entities_to_components.get(&Entity(1));
+
+            assert_eq!(entity_set.len(), 0);
+            assert!(component_map.is_none());
+            assert_eq!(em.entities_to_components.len(), 0);
+            assert_eq!(em.components_to_entities.len(), 1);
+        }
+
+        #[test]
+        fn can_remove_an_entity_that_has_no_components() {
+            let mut em = EntityManager::new();
+
+            em.entities_to_components.insert(Entity(1), HashMap::new());
+
+            em.remove_entity(&Entity(1));
+
+            let component_map = em.entities_to_components.get(&Entity(1));
+
+            assert!(component_map.is_none());
+            assert_eq!(em.entities_to_components.len(), 0);
+            assert_eq!(em.components_to_entities.len(), 0);
+        }
     }
 
     mod test_add_component_to_entity {
         use super::*;
+
+        #[test]
+        fn nothing_happens_when_adding_to_a_nonexistent_entity() {
+            let mut em = EntityManager::new();
+
+            em.add_component_to_entity(
+                &Entity(0),
+                Box::new(TestComponent { prop1: 5 }) as Box<dyn Component>,
+            );
+
+            assert!(em.components_to_entities.is_empty());
+            assert!(em.entities_to_components.is_empty());
+        }
+
+        #[test]
+        fn component_is_correctly_added_on_an_existing_entity() {
+            let mut em = EntityManager::new();
+
+            em.entities_to_components.insert(
+                Entity(0),
+                HashMap::from([(
+                    TestComponent::name().to_string(),
+                    Box::new(TestComponent { prop1: 5 }) as Box<dyn Component>,
+                )]),
+            );
+            em.components_to_entities.insert(
+                TestComponent::name().to_string(),
+                BTreeSet::from([Entity(0)]),
+            );
+
+            em.add_component_to_entity(
+                &Entity(0),
+                Box::new(OtherTestComponent { prop1: 10 }) as Box<dyn Component>,
+            );
+
+            assert_eq!(em.components_to_entities.len(), 2);
+            assert_eq!(em.entities_to_components.len(), 1);
+            assert_eq!(
+                OtherTestComponent::coerce(
+                    em.entities_to_components
+                        .get(&Entity(0))
+                        .expect("Entity 0 exists")
+                        .get(OtherTestComponent::name())
+                        .expect("OtherTestComponent is on Entity 0")
+                )
+                .expect("OtherTestComponent could be coerced.")
+                .prop1,
+                10
+            );
+        }
+
+        #[test]
+        fn nothing_happens_when_adding_a_component_to_an_entity_that_it_already_has() {
+            let mut em = EntityManager::new();
+
+            em.entities_to_components.insert(
+                Entity(0),
+                HashMap::from([(
+                    TestComponent::name().to_string(),
+                    Box::new(TestComponent { prop1: 5 }) as Box<dyn Component>,
+                )]),
+            );
+            em.components_to_entities.insert(
+                TestComponent::name().to_string(),
+                BTreeSet::from([Entity(0)]),
+            );
+
+            em.add_component_to_entity(
+                &Entity(0),
+                Box::new(TestComponent { prop1: 10 }) as Box<dyn Component>,
+            );
+
+            assert_eq!(em.components_to_entities.len(), 1);
+            assert_eq!(em.entities_to_components.len(), 1);
+            assert_eq!(
+                TestComponent::coerce(
+                    em.entities_to_components
+                        .get(&Entity(0))
+                        .expect("Entity 0 exists")
+                        .get(TestComponent::name())
+                        .expect("TestComponent is on Entity 0")
+                )
+                .expect("TestComponent could be coerced.")
+                .prop1,
+                5
+            );
+        }
     }
 
     mod test_remove_component_from_entity {
         use super::*;
+
+        #[test]
+        fn removing_a_component_that_does_not_exist_on_the_entity_has_no_effect() {
+            let mut em = EntityManager::new();
+
+            em.entities_to_components.insert(
+                Entity(0),
+                HashMap::from([(
+                    TestComponent::name().to_string(),
+                    Box::new(TestComponent { prop1: 5 }) as Box<dyn Component>,
+                )]),
+            );
+            em.components_to_entities.insert(
+                TestComponent::name().to_string(),
+                BTreeSet::from([Entity(0)]),
+            );
+
+            em.remove_component_from_entity(&Entity(0), OtherTestComponent::name());
+
+            assert_eq!(em.entities_to_components.len(), 1);
+            assert_eq!(em.components_to_entities.len(), 1);
+            assert!(!em
+                .entities_to_components
+                .get(&Entity(0))
+                .expect("Entity 0 exists")
+                .contains_key(OtherTestComponent::name()));
+        }
+
+        #[test]
+        fn removing_a_component_on_a_nonexistent_entity_has_no_effect() {
+            let mut em = EntityManager::new();
+
+            em.entities_to_components.insert(
+                Entity(0),
+                HashMap::from([(
+                    TestComponent::name().to_string(),
+                    Box::new(TestComponent { prop1: 5 }) as Box<dyn Component>,
+                )]),
+            );
+            em.components_to_entities.insert(
+                TestComponent::name().to_string(),
+                BTreeSet::from([Entity(0)]),
+            );
+
+            em.remove_component_from_entity(&Entity(1), TestComponent::name());
+
+            assert_eq!(em.entities_to_components.len(), 1);
+            assert_eq!(em.components_to_entities.len(), 1);
+            assert!(!em
+                .components_to_entities
+                .get(TestComponent::name())
+                .expect("TestComponent is available")
+                .contains(&Entity(1)));
+        }
+
+        #[test]
+        fn removing_from_an_existent_entity_succeeds() {
+            let mut em = EntityManager::new();
+
+            em.entities_to_components.insert(
+                Entity(0),
+                HashMap::from([(
+                    TestComponent::name().to_string(),
+                    Box::new(TestComponent { prop1: 5 }) as Box<dyn Component>,
+                )]),
+            );
+            em.components_to_entities.insert(
+                TestComponent::name().to_string(),
+                BTreeSet::from([Entity(0)]),
+            );
+
+            em.remove_component_from_entity(&Entity(0), TestComponent::name());
+
+            assert_eq!(em.entities_to_components.len(), 1);
+            assert_eq!(em.components_to_entities.len(), 1);
+            assert!(em
+                .entities_to_components
+                .get(&Entity(0))
+                .expect("Entity 0 exists.")
+                .is_empty());
+            assert!(em
+                .components_to_entities
+                .get(TestComponent::name())
+                .expect("There's an entry for TestComponent")
+                .is_empty());
+        }
     }
 }

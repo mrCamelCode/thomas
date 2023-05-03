@@ -9,3 +9,6 @@ pub use comp_transform::*;
 
 mod comp_transform2d;
 pub use comp_transform2d::*;
+
+mod comp_identity;
+pub use comp_identity::*;
