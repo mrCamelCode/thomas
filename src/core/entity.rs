@@ -3,7 +3,7 @@ use std::{
     sync::atomic::{AtomicU64, AtomicUsize},
 };
 
-#[derive(PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(PartialEq, Eq, Hash, PartialOrd, Ord, Copy, Clone)]
 pub struct Entity(u64);
 impl Entity {
     pub fn new() -> Self {
@@ -12,10 +12,6 @@ impl Entity {
         let id = ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         Self(id)
-    }
-
-    pub(crate) fn copy(other: &Entity) -> Self {
-        Self(**other)
     }
 }
 impl Deref for Entity {

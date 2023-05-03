@@ -29,11 +29,11 @@ impl EntityManager {
                         .components_to_entities
                         .get_mut(component.component_name())
                     {
-                        entity_set.insert(Entity::copy(&entity));
+                        entity_set.insert(entity);
                     }
                 } else {
                     let mut entity_set = BTreeSet::new();
-                    entity_set.insert(Entity::copy(&entity));
+                    entity_set.insert(entity);
 
                     self.components_to_entities
                         .insert(component.component_name().to_string(), entity_set);
@@ -46,10 +46,9 @@ impl EntityManager {
                 component_map.insert(component.component_name().to_string(), component);
             }
 
-            self.entities_to_components
-                .insert(Entity::copy(&entity), component_map);
+            self.entities_to_components.insert(entity, component_map);
 
-            return Some(Entity::copy(&entity));
+            return Some(entity);
         }
 
         None
@@ -76,10 +75,10 @@ impl EntityManager {
                 component_map.insert(component_name.to_string(), component);
 
                 if let Some(entity_set) = self.components_to_entities.get_mut(component_name) {
-                    entity_set.insert(Entity::copy(&entity));
+                    entity_set.insert(*entity);
                 } else {
                     let mut entity_set = BTreeSet::new();
-                    entity_set.insert(Entity::copy(&entity));
+                    entity_set.insert(*entity);
 
                     self.components_to_entities
                         .insert(component_name.to_string(), entity_set);
@@ -160,7 +159,7 @@ mod tests {
             let mut em = EntityManager::new();
 
             let entity = Entity::new();
-            let entity_copy = Entity::copy(&entity);
+            let entity_copy = entity.clone();
 
             let result1 = em
                 .add_entity(entity, vec![])
