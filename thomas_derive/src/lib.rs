@@ -19,6 +19,30 @@ fn impl_component_macro(ast: &syn::DeriveInput) -> TokenStream {
             fn name() -> &'static str {
                 stringify!(#struct_name)
             }
+
+            fn component_name(&self) -> &'static str {
+                stringify!(#struct_name)
+            }
+
+            fn as_any(&self) -> &dyn std::any::Any {
+                self
+            }
+
+            fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+                self
+            }
+
+            fn is_component_type(comp: &Box<dyn Component>) -> bool where Self: Sized{
+                comp.component_name() == Self::name()
+            }
+
+            fn coerce(comp: &Box<dyn Component>) -> Option<&Self> where Self: Sized {
+                comp.as_any().downcast_ref::<Self>()
+            }
+
+            fn coerce_mut(comp: &mut Box<dyn Component>) -> Option<&mut Self> where Self: Sized {
+                comp.as_any_mut().downcast_mut::<Self>()
+            }
         }
     };
 
