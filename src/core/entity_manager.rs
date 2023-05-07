@@ -1,10 +1,19 @@
-use std::collections::{BTreeSet, HashMap};
+use std::{
+    collections::{BTreeSet, HashMap},
+    hash::Hash,
+};
 
-use crate::{Component, Entity, Query};
+use crate::{
+    Component, Entity, Identity, Query, QueryResult, QueryResultList, QueryResultListMut,
+    QueryResultMut, Transform,
+};
+
+type EntitiesToComponents = HashMap<Entity, HashMap<String, Box<dyn Component>>>;
+type ComponentsToEntities = HashMap<String, BTreeSet<Entity>>;
 
 pub struct EntityManager {
-    entities_to_components: HashMap<Entity, HashMap<String, Box<dyn Component>>>,
-    components_to_entities: HashMap<String, BTreeSet<Entity>>,
+    entities_to_components: EntitiesToComponents,
+    components_to_entities: ComponentsToEntities,
 }
 impl EntityManager {
     pub fn new() -> Self {
@@ -97,17 +106,157 @@ impl EntityManager {
         }
     }
 
-    // pub fn query(&self, query: Query) -> impl Iterator<Item = &dyn Component> {
-    //     todo!("implement")
-    // }
+    pub fn query(&self, query: &Query) -> QueryResultList {
+        let component_names = query.component_names();
 
-    // pub fn query_mut(&mut self, query: Query) -> impl Iterator<Item = &mut dyn Component> {
-    //     todo!("implement")
-    // }
+        QueryResultList::new(
+            Self::get_entities_with_components(&self.components_to_entities, &component_names)
+                .into_iter()
+                .map(|relevant_entity| QueryResult {
+                    entity: relevant_entity,
+                    components: Self::get_components_on_entity(
+                        &self.entities_to_components,
+                        &relevant_entity,
+                        &component_names,
+                    ),
+                })
+                .collect(),
+        )
+    }
+
+    pub fn query_mut(&mut self, query: Query) -> QueryResultListMut {
+        let component_names = query.component_names();
+
+        let mut results: Vec<QueryResultMut> = vec![];
+        for relevant_entity in
+            Self::get_entities_with_components(&self.components_to_entities, &component_names)
+        {
+            results.push(QueryResultMut {
+                entity: relevant_entity,
+                components: Self::get_components_on_entity_mut(
+                    &mut self.entities_to_components,
+                    &relevant_entity,
+                    &component_names,
+                ),
+            });
+        }
+
+        QueryResultListMut::new(results)
+
+        // QueryResultListMut::new(
+        //     Self::get_entities_with_components(&self.components_to_entities, &component_names)
+        //         .into_iter()
+        //         .map(|relevant_entity| QueryResultMut {
+        //             entity: relevant_entity.clone(),
+        //             components: Self::get_components_on_entity_mut(
+        //                 &mut self.entities_to_components,
+        //                 &relevant_entity.clone(),
+        //                 &component_names,
+        //             ),
+        //         })
+        //         .collect(),
+        // )
+    }
+
+    fn get_entities_with_component(
+        components_to_entities: &ComponentsToEntities,
+        component_name: &'static str,
+    ) -> Vec<Entity> {
+        if let Some(entities_with_component) = components_to_entities.get(component_name) {
+            return entities_with_component
+                .iter()
+                .map(|entity_ref| *entity_ref)
+                .collect();
+        }
+
+        vec![]
+    }
+
+    fn get_entities_with_components(
+        components_to_entities: &ComponentsToEntities,
+        component_names: &Vec<&'static str>,
+    ) -> Vec<Entity> {
+        let entity_lists: Vec<Vec<Entity>> = component_names
+            .iter()
+            .map(|component_name| {
+                Self::get_entities_with_component(components_to_entities, component_name)
+            })
+            .filter(|entity_list| !entity_list.is_empty())
+            .collect();
+
+        // TODO: This isn't the most efficient. Multiple conditional retrieval could likely be
+        // sped up with the introduction of automatic archetype management.
+        intersection(&entity_lists)
+            .into_iter()
+            .map(|entity_ref| *entity_ref)
+            .collect()
+    }
+
+    fn get_components_on_entity<'a>(
+        entities_to_components: &'a EntitiesToComponents,
+        entity: &Entity,
+        component_names: &Vec<&'static str>,
+    ) -> Vec<&'a Box<dyn Component>> {
+        Self::get_all_components_on_entity(entities_to_components, entity)
+            .into_iter()
+            .filter_map(|boxed_component| {
+                if component_names.contains(&boxed_component.component_name()) {
+                    Some(boxed_component)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    fn get_components_on_entity_mut<'a>(
+        entities_to_components: &'a mut EntitiesToComponents,
+        entity: &Entity,
+        component_names: &Vec<&'static str>,
+    ) -> Vec<&'a mut Box<dyn Component>> {
+        Self::get_all_components_on_entity_mut(entities_to_components, entity)
+            .into_iter()
+            .filter_map(|boxed_component| {
+                if component_names.contains(&boxed_component.component_name()) {
+                    Some(boxed_component)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    fn get_all_components_on_entity<'a>(
+        entities_to_components: &'a EntitiesToComponents,
+        entity: &Entity,
+    ) -> Vec<&'a Box<dyn Component>> {
+        if let Some(component_map) = entities_to_components.get(entity) {
+            return component_map
+                .values()
+                .map(|boxed_component| &*boxed_component)
+                .collect();
+        }
+
+        vec![]
+    }
+
+    fn get_all_components_on_entity_mut<'a>(
+        entities_to_components: &'a mut EntitiesToComponents,
+        entity: &Entity,
+    ) -> Vec<&'a mut Box<dyn Component>> {
+        if let Some(component_map) = entities_to_components.get_mut(entity) {
+            return component_map
+                .values_mut()
+                .map(|boxed_component| &mut *boxed_component)
+                .collect();
+        }
+
+        vec![]
+    }
 }
 
 fn entity_has_component(
-    components_to_entities: &HashMap<String, BTreeSet<Entity>>,
+    components_to_entities: &ComponentsToEntities,
     entity: &Entity,
     component: &Box<dyn Component>,
 ) -> bool {
@@ -117,6 +266,24 @@ fn entity_has_component(
 
     false
 }
+
+fn intersection<T: Ord>(vectors: &Vec<Vec<T>>) -> Vec<&T> {
+    let mut values_tracker: BTreeSet<&T> = BTreeSet::new();
+    let mut intersecting_values = vec![];
+
+    for values_vector in vectors {
+        for value in values_vector {
+            if values_tracker.contains(value) {
+                intersecting_values.push(value);
+            } else {
+                values_tracker.insert(value);
+            }
+        }
+    }
+
+    intersecting_values
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
