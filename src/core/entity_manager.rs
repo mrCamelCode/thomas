@@ -1,14 +1,13 @@
 use std::{
+    cell::RefCell,
     collections::{BTreeSet, HashMap},
-    hash::Hash,
+    rc::Rc,
 };
 
-use crate::{
-    Component, Entity, Identity, Query, QueryResult, QueryResultList, QueryResultListMut,
-    QueryResultMut, Transform,
-};
+use crate::{Component, Entity, Query, QueryResult, QueryResultList};
 
-type EntitiesToComponents = HashMap<Entity, HashMap<String, Box<dyn Component>>>;
+pub type StoredComponent = Rc<RefCell<Box<dyn Component>>>;
+type EntitiesToComponents = HashMap<Entity, HashMap<String, StoredComponent>>;
 type ComponentsToEntities = HashMap<String, BTreeSet<Entity>>;
 
 pub struct EntityManager {
@@ -52,7 +51,10 @@ impl EntityManager {
             let mut component_map = HashMap::new();
 
             for component in components {
-                component_map.insert(component.component_name().to_string(), component);
+                component_map.insert(
+                    component.component_name().to_string(),
+                    Rc::new(RefCell::new(component)),
+                );
             }
 
             self.entities_to_components.insert(entity, component_map);
@@ -68,7 +70,7 @@ impl EntityManager {
             for component in component_map.values() {
                 if let Some(entity_set) = self
                     .components_to_entities
-                    .get_mut(component.component_name())
+                    .get_mut(component.borrow().component_name())
                 {
                     entity_set.remove(entity);
                 }
@@ -81,7 +83,7 @@ impl EntityManager {
             if !entity_has_component(&self.components_to_entities, &entity, &component) {
                 let component_name = component.component_name();
 
-                component_map.insert(component_name.to_string(), component);
+                component_map.insert(component_name.to_string(), Rc::new(RefCell::new(component)));
 
                 if let Some(entity_set) = self.components_to_entities.get_mut(component_name) {
                     entity_set.insert(*entity);
@@ -98,7 +100,7 @@ impl EntityManager {
 
     pub fn remove_component_from_entity(&mut self, entity: &Entity, component_name: &'static str) {
         if let Some(component_map) = self.entities_to_components.get_mut(&entity) {
-            if let Some(component) = component_map.remove(component_name) {
+            if component_map.remove(component_name).is_some() {
                 if let Some(entity_set) = self.components_to_entities.get_mut(component_name) {
                     entity_set.remove(entity);
                 }
@@ -124,40 +126,6 @@ impl EntityManager {
         )
     }
 
-    pub fn query_mut(&mut self, query: Query) -> QueryResultListMut {
-        let component_names = query.component_names();
-
-        let mut results: Vec<QueryResultMut> = vec![];
-        for relevant_entity in
-            Self::get_entities_with_components(&self.components_to_entities, &component_names)
-        {
-            results.push(QueryResultMut {
-                entity: relevant_entity,
-                components: Self::get_components_on_entity_mut(
-                    &mut self.entities_to_components,
-                    &relevant_entity,
-                    &component_names,
-                ),
-            });
-        }
-
-        QueryResultListMut::new(results)
-
-        // QueryResultListMut::new(
-        //     Self::get_entities_with_components(&self.components_to_entities, &component_names)
-        //         .into_iter()
-        //         .map(|relevant_entity| QueryResultMut {
-        //             entity: relevant_entity.clone(),
-        //             components: Self::get_components_on_entity_mut(
-        //                 &mut self.entities_to_components,
-        //                 &relevant_entity.clone(),
-        //                 &component_names,
-        //             ),
-        //         })
-        //         .collect(),
-        // )
-    }
-
     fn get_entities_with_component(
         components_to_entities: &ComponentsToEntities,
         component_name: &'static str,
@@ -176,32 +144,35 @@ impl EntityManager {
         components_to_entities: &ComponentsToEntities,
         component_names: &Vec<&'static str>,
     ) -> Vec<Entity> {
-        let entity_lists: Vec<Vec<Entity>> = component_names
+        let mut entity_lists: Vec<Vec<Entity>> = component_names
             .iter()
             .map(|component_name| {
                 Self::get_entities_with_component(components_to_entities, component_name)
             })
-            .filter(|entity_list| !entity_list.is_empty())
             .collect();
 
         // TODO: This isn't the most efficient. Multiple conditional retrieval could likely be
         // sped up with the introduction of automatic archetype management.
-        intersection(&entity_lists)
-            .into_iter()
-            .map(|entity_ref| *entity_ref)
-            .collect()
+        if entity_lists.len() == 1 {
+            entity_lists.pop().unwrap()
+        } else {
+            intersection(&entity_lists)
+                .into_iter()
+                .map(|entity_ref| *entity_ref)
+                .collect()
+        }
     }
 
-    fn get_components_on_entity<'a>(
-        entities_to_components: &'a EntitiesToComponents,
+    fn get_components_on_entity(
+        entities_to_components: &EntitiesToComponents,
         entity: &Entity,
         component_names: &Vec<&'static str>,
-    ) -> Vec<&'a Box<dyn Component>> {
+    ) -> Vec<StoredComponent> {
         Self::get_all_components_on_entity(entities_to_components, entity)
             .into_iter()
-            .filter_map(|boxed_component| {
-                if component_names.contains(&boxed_component.component_name()) {
-                    Some(boxed_component)
+            .filter_map(|stored_component| {
+                if component_names.contains(&stored_component.borrow().component_name()) {
+                    Some(stored_component)
                 } else {
                     None
                 }
@@ -209,45 +180,14 @@ impl EntityManager {
             .collect()
     }
 
-    fn get_components_on_entity_mut<'a>(
-        entities_to_components: &'a mut EntitiesToComponents,
+    fn get_all_components_on_entity(
+        entities_to_components: &EntitiesToComponents,
         entity: &Entity,
-        component_names: &Vec<&'static str>,
-    ) -> Vec<&'a mut Box<dyn Component>> {
-        Self::get_all_components_on_entity_mut(entities_to_components, entity)
-            .into_iter()
-            .filter_map(|boxed_component| {
-                if component_names.contains(&boxed_component.component_name()) {
-                    Some(boxed_component)
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
-    fn get_all_components_on_entity<'a>(
-        entities_to_components: &'a EntitiesToComponents,
-        entity: &Entity,
-    ) -> Vec<&'a Box<dyn Component>> {
+    ) -> Vec<StoredComponent> {
         if let Some(component_map) = entities_to_components.get(entity) {
             return component_map
                 .values()
-                .map(|boxed_component| &*boxed_component)
-                .collect();
-        }
-
-        vec![]
-    }
-
-    fn get_all_components_on_entity_mut<'a>(
-        entities_to_components: &'a mut EntitiesToComponents,
-        entity: &Entity,
-    ) -> Vec<&'a mut Box<dyn Component>> {
-        if let Some(component_map) = entities_to_components.get_mut(entity) {
-            return component_map
-                .values_mut()
-                .map(|boxed_component| &mut *boxed_component)
+                .map(|stored_component| Rc::clone(stored_component))
                 .collect();
         }
 
@@ -287,6 +227,9 @@ fn intersection<T: Ord>(vectors: &Vec<Vec<T>>) -> Vec<&T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Component)]
+    struct EmptyComponent {}
 
     #[derive(Component)]
     struct TestComponent {
@@ -354,8 +297,8 @@ mod tests {
                 .get(&result)
                 .expect("The component map was added for the entity");
 
-            let comp = component_map.get(TestComponent::name()).unwrap();
-            let test_component = TestComponent::coerce(comp).expect("Component is TestComponent");
+            let comp = component_map.get(TestComponent::name()).unwrap().borrow();
+            let test_component = TestComponent::coerce(&comp).expect("Component is TestComponent");
 
             assert!(component_map.get(TestComponent::name()).is_some());
             assert_eq!(test_component.prop1, 1);
@@ -382,16 +325,22 @@ mod tests {
                 .expect("The component map was added for the entity");
 
             let (comp1, comp2, comp3) = (
-                component_map.get(TestComponent::name()).unwrap(),
-                component_map.get(OtherTestComponent::name()).unwrap(),
-                component_map.get(AnotherTestComponent::name()).unwrap(),
+                component_map.get(TestComponent::name()).unwrap().borrow(),
+                component_map
+                    .get(OtherTestComponent::name())
+                    .unwrap()
+                    .borrow(),
+                component_map
+                    .get(AnotherTestComponent::name())
+                    .unwrap()
+                    .borrow(),
             );
 
-            let test_component = TestComponent::coerce(comp1).expect("Component is TestComponent");
+            let test_component = TestComponent::coerce(&comp1).expect("Component is TestComponent");
             let other_test_component =
-                OtherTestComponent::coerce(comp2).expect("Component is OtherTestComponent");
+                OtherTestComponent::coerce(&comp2).expect("Component is OtherTestComponent");
             let another_test_component =
-                AnotherTestComponent::coerce(comp3).expect("Component is AnotherTestComponent");
+                AnotherTestComponent::coerce(&comp3).expect("Component is AnotherTestComponent");
 
             assert!(component_map.get(TestComponent::name()).is_some());
             assert_eq!(test_component.prop1, 1);
@@ -419,7 +368,9 @@ mod tests {
                 Entity(1),
                 HashMap::from([(
                     TestComponent::name().to_string(),
-                    Box::new(TestComponent { prop1: 1 }) as Box<dyn Component>,
+                    Rc::new(RefCell::new(
+                        Box::new(TestComponent { prop1: 1 }) as Box<dyn Component>
+                    )),
                 )]),
             );
 
@@ -436,7 +387,7 @@ mod tests {
 
             assert_eq!(component_map.len(), 1);
             assert_eq!(
-                TestComponent::coerce(component_map.get(TestComponent::name()).unwrap())
+                TestComponent::coerce(&component_map.get(TestComponent::name()).unwrap().borrow())
                     .unwrap()
                     .prop1,
                 1
@@ -455,7 +406,9 @@ mod tests {
                 Entity(1),
                 HashMap::from([(
                     TestComponent::name().to_string(),
-                    Box::new(TestComponent { prop1: 1 }) as Box<dyn Component>,
+                    Rc::new(RefCell::new(
+                        Box::new(TestComponent { prop1: 1 }) as Box<dyn Component>
+                    )),
                 )]),
             );
 
@@ -513,7 +466,9 @@ mod tests {
                 Entity(0),
                 HashMap::from([(
                     TestComponent::name().to_string(),
-                    Box::new(TestComponent { prop1: 5 }) as Box<dyn Component>,
+                    Rc::new(RefCell::new(
+                        Box::new(TestComponent { prop1: 5 }) as Box<dyn Component>
+                    )),
                 )]),
             );
             em.components_to_entities.insert(
@@ -530,11 +485,12 @@ mod tests {
             assert_eq!(em.entities_to_components.len(), 1);
             assert_eq!(
                 OtherTestComponent::coerce(
-                    em.entities_to_components
+                    &em.entities_to_components
                         .get(&Entity(0))
                         .expect("Entity 0 exists")
                         .get(OtherTestComponent::name())
                         .expect("OtherTestComponent is on Entity 0")
+                        .borrow()
                 )
                 .expect("OtherTestComponent could be coerced.")
                 .prop1,
@@ -550,7 +506,9 @@ mod tests {
                 Entity(0),
                 HashMap::from([(
                     TestComponent::name().to_string(),
-                    Box::new(TestComponent { prop1: 5 }) as Box<dyn Component>,
+                    Rc::new(RefCell::new(
+                        Box::new(TestComponent { prop1: 5 }) as Box<dyn Component>
+                    )),
                 )]),
             );
             em.components_to_entities.insert(
@@ -567,11 +525,12 @@ mod tests {
             assert_eq!(em.entities_to_components.len(), 1);
             assert_eq!(
                 TestComponent::coerce(
-                    em.entities_to_components
+                    &em.entities_to_components
                         .get(&Entity(0))
                         .expect("Entity 0 exists")
                         .get(TestComponent::name())
                         .expect("TestComponent is on Entity 0")
+                        .borrow()
                 )
                 .expect("TestComponent could be coerced.")
                 .prop1,
@@ -591,7 +550,9 @@ mod tests {
                 Entity(0),
                 HashMap::from([(
                     TestComponent::name().to_string(),
-                    Box::new(TestComponent { prop1: 5 }) as Box<dyn Component>,
+                    Rc::new(RefCell::new(
+                        Box::new(TestComponent { prop1: 5 }) as Box<dyn Component>
+                    )),
                 )]),
             );
             em.components_to_entities.insert(
@@ -618,7 +579,9 @@ mod tests {
                 Entity(0),
                 HashMap::from([(
                     TestComponent::name().to_string(),
-                    Box::new(TestComponent { prop1: 5 }) as Box<dyn Component>,
+                    Rc::new(RefCell::new(
+                        Box::new(TestComponent { prop1: 5 }) as Box<dyn Component>
+                    )),
                 )]),
             );
             em.components_to_entities.insert(
@@ -645,7 +608,9 @@ mod tests {
                 Entity(0),
                 HashMap::from([(
                     TestComponent::name().to_string(),
-                    Box::new(TestComponent { prop1: 5 }) as Box<dyn Component>,
+                    Rc::new(RefCell::new(
+                        Box::new(TestComponent { prop1: 5 }) as Box<dyn Component>
+                    )),
                 )]),
             );
             em.components_to_entities.insert(
@@ -667,6 +632,700 @@ mod tests {
                 .get(TestComponent::name())
                 .expect("There's an entry for TestComponent")
                 .is_empty());
+        }
+    }
+
+    mod test_query {
+        use super::*;
+
+        #[test]
+        fn query_returns_only_relevant_matches() {
+            let mut em = EntityManager::new();
+
+            em.add_entity(
+                Entity(0),
+                vec![
+                    Box::new(TestComponent { prop1: 10 }),
+                    Box::new(AnotherTestComponent { prop1: 100 }),
+                ],
+            );
+            em.add_entity(Entity(1), vec![Box::new(TestComponent { prop1: 20 })]);
+
+            let query_results = em.query(&Query::new().has::<AnotherTestComponent>());
+
+            assert_eq!((*query_results).len(), 1);
+            assert_eq!(query_results.get(0).unwrap().entity, Entity(0));
+        }
+
+        #[test]
+        fn complex_query_for_more_than_one_component_match_works() {
+            let mut em = EntityManager::new();
+
+            em.add_entity(
+                Entity(0),
+                vec![
+                    Box::new(TestComponent { prop1: 10 }),
+                    Box::new(AnotherTestComponent { prop1: 100 }),
+                    Box::new(EmptyComponent {}),
+                ],
+            );
+            em.add_entity(Entity(1), vec![Box::new(TestComponent { prop1: 20 })]);
+            em.add_entity(
+                Entity(2),
+                vec![
+                    Box::new(EmptyComponent {}),
+                    Box::new(TestComponent { prop1: 1 }),
+                ],
+            );
+
+            let query_results =
+                em.query(&Query::new().has::<EmptyComponent>().has::<TestComponent>());
+
+            assert_eq!((*query_results).len(), 2);
+            assert!(query_results
+                .iter()
+                .find(|result| result.entity == Entity(0))
+                .is_some());
+            assert!(query_results
+                .iter()
+                .find(|result| result.entity == Entity(2))
+                .is_some());
+        }
+
+        #[test]
+        fn can_read_queried_components() {
+            let mut em = EntityManager::new();
+
+            em.add_entity(
+                Entity(0),
+                vec![
+                    Box::new(TestComponent { prop1: 10 }),
+                    Box::new(AnotherTestComponent { prop1: 100 }),
+                ],
+            );
+            em.add_entity(Entity(1), vec![Box::new(TestComponent { prop1: 20 })]);
+
+            let query_results = em.query(&Query::new().has::<TestComponent>());
+
+            assert_eq!((*query_results).len(), 2);
+
+            for result in &*query_results {
+                match result.entity {
+                    Entity(0) => assert_eq!(
+                        TestComponent::coerce(&result.components[0].borrow())
+                            .unwrap()
+                            .prop1,
+                        10
+                    ),
+                    Entity(1) => assert_eq!(
+                        TestComponent::coerce(&result.components[0].borrow())
+                            .unwrap()
+                            .prop1,
+                        20
+                    ),
+                    entity => panic!("Entity present in results that should not be: {:?}", entity),
+                }
+            }
+        }
+
+        #[test]
+        fn can_mutate_queried_components() {
+            let mut em = EntityManager::new();
+
+            em.add_entity(
+                Entity(0),
+                vec![
+                    Box::new(TestComponent { prop1: 10 }),
+                    Box::new(AnotherTestComponent { prop1: 100 }),
+                    Box::new(OtherTestComponent { prop1: 20 }),
+                ],
+            );
+            em.add_entity(
+                Entity(1),
+                vec![
+                    Box::new(TestComponent { prop1: 20 }),
+                    Box::new(AnotherTestComponent { prop1: 2 }),
+                ],
+            );
+
+            let query_results = em.query(
+                &Query::new()
+                    .has::<TestComponent>()
+                    .has::<AnotherTestComponent>(),
+            );
+
+            assert_eq!(query_results.len(), 2);
+
+            for result in &*query_results {
+                if result.entity == Entity(0) {
+                    if let Some(raw_another_test_component) = result
+                        .components
+                        .iter()
+                        .find(|comp| comp.borrow().component_name() == AnotherTestComponent::name())
+                    {
+                        AnotherTestComponent::coerce_mut(
+                            &mut raw_another_test_component.borrow_mut(),
+                        )
+                        .unwrap()
+                        .prop1 = 50;
+                    }
+
+                    if let Some(raw_test_component) = result
+                        .components
+                        .iter()
+                        .find(|comp| comp.borrow().component_name() == TestComponent::name())
+                    {
+                        TestComponent::coerce_mut(&mut raw_test_component.borrow_mut())
+                            .unwrap()
+                            .prop1 = 1;
+                    }
+                } else if result.entity == Entity(1) {
+                    if let Some(raw_test_component) = result
+                        .components
+                        .iter()
+                        .find(|comp| comp.borrow().component_name() == TestComponent::name())
+                    {
+                        TestComponent::coerce_mut(&mut raw_test_component.borrow_mut())
+                            .unwrap()
+                            .prop1 = 240;
+                    }
+                }
+            }
+
+            for result in &*query_results {
+                match result.entity {
+                    Entity(0) => {
+                        let test_component = result
+                            .components
+                            .iter()
+                            .find(|comp| comp.borrow().component_name() == TestComponent::name())
+                            .unwrap()
+                            .borrow();
+                        let another_test_component = result
+                            .components
+                            .iter()
+                            .find(|comp| {
+                                comp.borrow().component_name() == AnotherTestComponent::name()
+                            })
+                            .unwrap()
+                            .borrow();
+
+                        assert_eq!(TestComponent::coerce(&test_component).unwrap().prop1, 1);
+                        assert_eq!(
+                            AnotherTestComponent::coerce(&another_test_component)
+                                .unwrap()
+                                .prop1,
+                            50
+                        );
+                    }
+                    Entity(1) => {
+                        let test_component = result
+                            .components
+                            .iter()
+                            .find(|comp| comp.borrow().component_name() == TestComponent::name())
+                            .unwrap()
+                            .borrow();
+                        let another_test_component = result
+                            .components
+                            .iter()
+                            .find(|comp| {
+                                comp.borrow().component_name() == AnotherTestComponent::name()
+                            })
+                            .unwrap()
+                            .borrow();
+
+                        assert_eq!(TestComponent::coerce(&test_component).unwrap().prop1, 240);
+                        assert_eq!(
+                            AnotherTestComponent::coerce(&another_test_component)
+                                .unwrap()
+                                .prop1,
+                            2
+                        );
+                    }
+                    entity => panic!("Entity present in results that should not be: {:?}", entity),
+                }
+            }
+        }
+    }
+
+    mod test_get_entities_with_component {
+        use super::*;
+
+        #[test]
+        fn is_empty_when_there_are_no_entities() {
+            let em = EntityManager::new();
+
+            let result = EntityManager::get_entities_with_component(
+                &em.components_to_entities,
+                EmptyComponent::name(),
+            );
+
+            assert!(result.is_empty());
+        }
+
+        #[test]
+        fn is_empty_when_no_entities_have_the_provided_component() {
+            let mut em = EntityManager::new();
+
+            em.add_entity(Entity(0), vec![Box::new(TestComponent { prop1: 10 })]);
+
+            let result = EntityManager::get_entities_with_component(
+                &em.components_to_entities,
+                EmptyComponent::name(),
+            );
+
+            assert!(result.is_empty());
+        }
+
+        #[test]
+        fn works_when_one_entity_matches() {
+            let mut em = EntityManager::new();
+
+            em.add_entity(Entity(0), vec![Box::new(TestComponent { prop1: 10 })]);
+            em.add_entity(Entity(1), vec![Box::new(EmptyComponent {})]);
+
+            let result = EntityManager::get_entities_with_component(
+                &em.components_to_entities,
+                EmptyComponent::name(),
+            );
+
+            assert_eq!(result.len(), 1);
+            assert_eq!(result[0], Entity(1));
+        }
+
+        #[test]
+        fn works_when_multiple_entities_match() {
+            let mut em = EntityManager::new();
+
+            em.add_entity(Entity(0), vec![Box::new(TestComponent { prop1: 10 })]);
+            em.add_entity(
+                Entity(1),
+                vec![
+                    Box::new(TestComponent { prop1: 100 }),
+                    Box::new(EmptyComponent {}),
+                ],
+            );
+
+            let result = EntityManager::get_entities_with_component(
+                &em.components_to_entities,
+                TestComponent::name(),
+            );
+
+            assert_eq!(result.len(), 2);
+            assert!(result.contains(&Entity(0)) && result.contains(&Entity(1)));
+        }
+    }
+
+    mod test_get_entities_with_components {
+        use super::*;
+
+        #[test]
+        fn is_empty_when_there_are_no_entities() {
+            let em = EntityManager::new();
+
+            let result = EntityManager::get_entities_with_components(
+                &em.components_to_entities,
+                &vec![EmptyComponent::name()],
+            );
+
+            assert!(result.is_empty());
+        }
+
+        #[test]
+        fn is_empty_when_no_entities_have_provided_components() {
+            let mut em = EntityManager::new();
+
+            em.add_entity(Entity(0), vec![Box::new(TestComponent { prop1: 10 })]);
+
+            let result = EntityManager::get_entities_with_components(
+                &em.components_to_entities,
+                &vec![EmptyComponent::name()],
+            );
+
+            assert!(result.is_empty());
+        }
+
+        #[test]
+        fn returns_entity_list_for_component_when_searching_for_one_component() {
+            let mut em = EntityManager::new();
+
+            em.add_entity(Entity(0), vec![Box::new(TestComponent { prop1: 10 })]);
+            em.add_entity(
+                Entity(1),
+                vec![
+                    Box::new(AnotherTestComponent { prop1: 20 }),
+                    Box::new(EmptyComponent {}),
+                ],
+            );
+
+            let result = EntityManager::get_entities_with_components(
+                &em.components_to_entities,
+                &vec![EmptyComponent::name()],
+            );
+
+            assert_eq!(result.len(), 1);
+            assert_eq!(result[0], Entity(1));
+        }
+
+        #[test]
+        fn works_when_one_entity_has_all_provided_components() {
+            let mut em = EntityManager::new();
+
+            em.add_entity(Entity(0), vec![Box::new(TestComponent { prop1: 10 })]);
+            em.add_entity(
+                Entity(1),
+                vec![
+                    Box::new(AnotherTestComponent { prop1: 20 }),
+                    Box::new(EmptyComponent {}),
+                    Box::new(OtherTestComponent { prop1: 200 }),
+                ],
+            );
+
+            let result = EntityManager::get_entities_with_components(
+                &em.components_to_entities,
+                &vec![AnotherTestComponent::name(), OtherTestComponent::name()],
+            );
+
+            assert_eq!(result.len(), 1);
+            assert!(result.contains(&Entity(1)));
+        }
+
+        #[test]
+        fn works_when_multiple_entities_have_all_provided_components() {
+            let mut em = EntityManager::new();
+
+            em.add_entity(
+                Entity(0),
+                vec![
+                    Box::new(TestComponent { prop1: 10 }),
+                    Box::new(EmptyComponent {}),
+                ],
+            );
+            em.add_entity(Entity(1), vec![Box::new(TestComponent { prop1: 10 })]);
+            em.add_entity(
+                Entity(2),
+                vec![Box::new(AnotherTestComponent { prop1: 10 })],
+            );
+            em.add_entity(Entity(3), vec![Box::new(EmptyComponent {})]);
+            em.add_entity(
+                Entity(4),
+                vec![
+                    Box::new(TestComponent { prop1: 20 }),
+                    Box::new(EmptyComponent {}),
+                    Box::new(OtherTestComponent { prop1: 200 }),
+                ],
+            );
+
+            let result = EntityManager::get_entities_with_components(
+                &em.components_to_entities,
+                &vec![TestComponent::name(), EmptyComponent::name()],
+            );
+
+            assert_eq!(result.len(), 2);
+            assert!(result.contains(&Entity(0)));
+            assert!(result.contains(&Entity(4)));
+        }
+    }
+
+    mod test_get_components_on_entity {
+        use super::*;
+
+        #[test]
+        fn is_empty_for_non_existent_entity() {
+            let em = EntityManager::new();
+
+            let results = EntityManager::get_components_on_entity(
+                &em.entities_to_components,
+                &Entity(0),
+                &vec![TestComponent::name()],
+            );
+
+            assert!(results.is_empty());
+        }
+
+        #[test]
+        fn is_empty_for_entity_with_no_components() {
+            let mut em = EntityManager::new();
+
+            em.add_entity(Entity(0), vec![]);
+
+            let results = EntityManager::get_components_on_entity(
+                &em.entities_to_components,
+                &Entity(0),
+                &vec![TestComponent::name()],
+            );
+
+            assert!(results.is_empty());
+        }
+
+        #[test]
+        fn is_empty_when_no_search_components_are_provided() {
+            let mut em = EntityManager::new();
+
+            em.add_entity(Entity(0), vec![Box::new(EmptyComponent {})]);
+
+            let results = EntityManager::get_components_on_entity(
+                &em.entities_to_components,
+                &Entity(0),
+                &vec![],
+            );
+
+            assert!(results.is_empty());
+        }
+
+        #[test]
+        fn works_when_searching_for_one_component_on_entity_with_that_component() {
+            let mut em = EntityManager::new();
+
+            em.add_entity(Entity(0), vec![Box::new(TestComponent { prop1: 10 })]);
+
+            let results = EntityManager::get_components_on_entity(
+                &em.entities_to_components,
+                &Entity(0),
+                &vec![TestComponent::name()],
+            );
+
+            assert_eq!(results.len(), 1);
+            assert_eq!(
+                TestComponent::coerce(&results[0].borrow())
+                    .expect("Only result is TestComponent")
+                    .prop1,
+                10
+            );
+        }
+
+        #[test]
+        fn works_when_searching_for_one_component_on_entity_with_multiple_components() {
+            let mut em = EntityManager::new();
+
+            em.add_entity(
+                Entity(0),
+                vec![
+                    Box::new(TestComponent { prop1: 10 }),
+                    Box::new(EmptyComponent {}),
+                ],
+            );
+
+            let results = EntityManager::get_components_on_entity(
+                &em.entities_to_components,
+                &Entity(0),
+                &vec![TestComponent::name()],
+            );
+
+            assert_eq!(results.len(), 1);
+            assert_eq!(
+                TestComponent::coerce(&results[0].borrow())
+                    .expect("Only result is TestComponent")
+                    .prop1,
+                10
+            );
+        }
+
+        #[test]
+        fn works_when_searching_for_multiple_components_on_entity_with_one_component() {
+            let mut em = EntityManager::new();
+
+            em.add_entity(Entity(0), vec![Box::new(TestComponent { prop1: 10 })]);
+
+            let results = EntityManager::get_components_on_entity(
+                &em.entities_to_components,
+                &Entity(0),
+                &vec![TestComponent::name(), EmptyComponent::name()],
+            );
+
+            assert_eq!(results.len(), 1);
+            assert_eq!(
+                TestComponent::coerce(&results[0].borrow())
+                    .expect("Only result is TestComponent")
+                    .prop1,
+                10
+            );
+        }
+
+        #[test]
+        fn works_when_searching_for_multiple_components_on_entity_with_multiple_components() {
+            let mut em = EntityManager::new();
+
+            em.add_entity(
+                Entity(0),
+                vec![
+                    Box::new(TestComponent { prop1: 10 }),
+                    Box::new(EmptyComponent {}),
+                    Box::new(OtherTestComponent { prop1: 100 }),
+                    Box::new(AnotherTestComponent { prop1: 200 }),
+                ],
+            );
+
+            let results = EntityManager::get_components_on_entity(
+                &em.entities_to_components,
+                &Entity(0),
+                &vec![
+                    TestComponent::name(),
+                    EmptyComponent::name(),
+                    AnotherTestComponent::name(),
+                ],
+            );
+
+            let raw_test_component = results
+                .iter()
+                .find(|result| result.borrow().component_name() == TestComponent::name())
+                .expect("Can find TestComponent")
+                .borrow();
+            let test_component = TestComponent::coerce(&raw_test_component).unwrap();
+
+            let raw_another_test_component = results
+                .iter()
+                .find(|result| result.borrow().component_name() == AnotherTestComponent::name())
+                .expect("Can find AnotherTestComponent")
+                .borrow();
+            let another_test_component =
+                AnotherTestComponent::coerce(&raw_another_test_component).unwrap();
+
+            let raw_empty_component = results
+                .iter()
+                .find(|result| result.borrow().component_name() == EmptyComponent::name())
+                .expect("Can find EmptyComponent")
+                .borrow();
+            let empty_component_option = EmptyComponent::coerce(&raw_empty_component);
+
+            assert_eq!(results.len(), 3);
+            assert_eq!(test_component.prop1, 10);
+            assert_eq!(another_test_component.prop1, 200);
+            assert!(empty_component_option.is_some());
+        }
+    }
+
+    mod test_get_all_components_on_entity {
+        use super::*;
+
+        #[test]
+        fn is_empty_for_non_existent_entity() {
+            let em = EntityManager::new();
+
+            let result =
+                EntityManager::get_all_components_on_entity(&em.entities_to_components, &Entity(0));
+
+            assert!(result.is_empty());
+        }
+
+        #[test]
+        fn works_for_entities_with_no_components() {
+            let mut em = EntityManager::new();
+
+            em.add_entity(Entity(0), vec![]);
+
+            let result =
+                EntityManager::get_all_components_on_entity(&em.entities_to_components, &Entity(0));
+
+            assert!(result.is_empty());
+        }
+
+        #[test]
+        fn works_for_entity_with_one_component() {
+            let mut em = EntityManager::new();
+
+            em.add_entity(Entity(0), vec![Box::new(EmptyComponent {})]);
+
+            let result =
+                EntityManager::get_all_components_on_entity(&em.entities_to_components, &Entity(0));
+
+            assert_eq!(result.len(), 1);
+
+            EmptyComponent::coerce(&result[0].borrow())
+                .expect("The one component is an EmptyComponent");
+        }
+
+        #[test]
+        fn works_for_entity_with_multiple_components() {
+            let mut em = EntityManager::new();
+
+            em.add_entity(
+                Entity(0),
+                vec![
+                    Box::new(EmptyComponent {}),
+                    Box::new(TestComponent { prop1: 10 }),
+                ],
+            );
+
+            let result =
+                EntityManager::get_all_components_on_entity(&em.entities_to_components, &Entity(0));
+
+            assert_eq!(result.len(), 2);
+            assert_eq!(
+                TestComponent::coerce(
+                    &result
+                        .iter()
+                        .find(|comp| comp.borrow().component_name() == TestComponent::name())
+                        .expect("It can find the TestComponent in the results")
+                        .borrow()
+                )
+                .unwrap()
+                .prop1,
+                10
+            );
+            assert!(result
+                .iter()
+                .find(|comp| comp.borrow().component_name() == EmptyComponent::name())
+                .is_some())
+        }
+    }
+
+    mod test_intersection {
+        use super::*;
+
+        #[test]
+        fn is_empty_when_there_are_no_vectors() {
+            let vecs: Vec<Vec<u32>> = vec![];
+
+            let result = intersection(&vecs);
+
+            assert!(result.is_empty());
+        }
+
+        #[test]
+        fn is_empty_when_there_is_only_one_vector() {
+            let vecs: Vec<Vec<u32>> = vec![vec![1, 4, 5]];
+
+            let result = intersection(&vecs);
+
+            assert!(result.is_empty());
+        }
+
+        #[test]
+        fn is_empty_when_there_are_no_intersections() {
+            let vecs: Vec<Vec<u32>> = vec![vec![1, 4, 5], vec![10, 20, 30]];
+
+            let result = intersection(&vecs);
+
+            assert!(result.is_empty());
+        }
+
+        #[test]
+        fn reports_intersections_for_two_vectors() {
+            let vecs: Vec<Vec<u32>> = vec![vec![1, 2, 3], vec![4, 3, 5]];
+
+            let result = intersection(&vecs);
+
+            assert_eq!(result.len(), 1);
+            assert!(result.contains(&&3));
+        }
+
+        #[test]
+        fn reports_intersections_for_more_than_two_vectors() {
+            let vecs: Vec<Vec<u32>> = vec![
+                vec![1, 2, 3],
+                vec![4, 3, 5],
+                vec![5, 10, 20],
+                vec![40, 10, 20, 30],
+            ];
+
+            let result = intersection(&vecs);
+
+            assert_eq!(result.len(), 4);
+            assert!(result.contains(&&3));
+            assert!(result.contains(&&5));
+            assert!(result.contains(&&10));
+            assert!(result.contains(&&20));
         }
     }
 }

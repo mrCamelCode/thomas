@@ -1,4 +1,6 @@
-use crate::{Component, Coords, Entity, Identity, Transform};
+use std::ops::Deref;
+
+use crate::{Component, Coords, Entity, Identity, StoredComponent, Transform};
 
 pub struct Query {
     components: Vec<ComponentQueryData>,
@@ -68,31 +70,28 @@ fn tmp_example_interface_use() {
     fn system(stuff: Vec<&dyn Component>) {}
 }
 
-pub struct QueryResult<'a> {
+// pub struct QueryResult<'a> {
+//     pub(crate) entity: Entity,
+//     pub(crate) components: Vec<&'a Box<dyn Component>>,
+// }
+pub struct QueryResult {
     pub(crate) entity: Entity,
-    pub(crate) components: Vec<&'a Box<dyn Component>>,
+    pub(crate) components: Vec<StoredComponent>,
 }
 
-pub struct QueryResultMut<'a> {
-    pub(crate) entity: Entity,
-    pub(crate) components: Vec<&'a mut Box<dyn Component>>,
+pub struct QueryResultList {
+    list: Vec<QueryResult>,
 }
-
-pub struct QueryResultList<'a> {
-    list: Vec<QueryResult<'a>>,
-}
-impl<'a> QueryResultList<'a> {
-    pub fn new(results: Vec<QueryResult<'a>>) -> Self {
+impl QueryResultList {
+    pub fn new(results: Vec<QueryResult>) -> Self {
         Self { list: results }
     }
 }
+impl Deref for QueryResultList {
+    type Target = Vec<QueryResult>;
 
-pub struct QueryResultListMut<'a> {
-    list: Vec<QueryResultMut<'a>>,
-}
-impl<'a> QueryResultListMut<'a> {
-    pub fn new(results: Vec<QueryResultMut<'a>>) -> Self {
-        Self { list: results }
+    fn deref(&self) -> &Self::Target {
+        &self.list
     }
 }
 
