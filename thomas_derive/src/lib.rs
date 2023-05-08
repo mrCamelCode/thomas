@@ -1,6 +1,5 @@
 use proc_macro::TokenStream;
 use quote::quote;
-use syn;
 
 #[proc_macro_derive(Component)]
 pub fn component_macro_derive(input: TokenStream) -> TokenStream {
@@ -44,6 +43,42 @@ fn impl_component_macro(ast: &syn::DeriveInput) -> TokenStream {
                 comp.as_any_mut().downcast_mut::<Self>()
             }
         }
+    };
+
+    gen.into()
+}
+
+// #[derive(Parse)]
+// struct Test {
+//     query_result: syn::Ident,
+//     comma: Punct,
+//     component_type: syn::Ident,
+// }
+
+#[proc_macro]
+pub fn get_component(input: TokenStream) -> TokenStream {
+    let mut iter = input.into_iter();
+
+    let query_result =
+        syn::parse_str::<syn::Ident>(&iter.next().unwrap().span().source_text().unwrap()).unwrap();
+
+    // Ignore comma
+    iter.next();
+
+    let component_type =
+        syn::parse_str::<syn::Ident>(&iter.next().unwrap().span().source_text().unwrap()).unwrap();
+
+    let gen = quote! {
+        #component_type::coerce(
+            &#query_result
+                .components
+                .iter()
+                .find(|comp| comp.borrow().component_name() == #component_type::name())
+                .expect("get_component: Provided component type is present in query results.")
+                .borrow(),
+        )
+        .unwrap()
+
     };
 
     gen.into()

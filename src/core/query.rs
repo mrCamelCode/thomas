@@ -62,3 +62,41 @@ impl ComponentQueryData {
         Self { component_name }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Component;
+
+    #[derive(Component)]
+    struct EmptyComponent {}
+
+    #[derive(Component)]
+    struct AnotherEmptyComponent {}
+
+    mod test_get_component {
+        use std::{cell::RefCell, rc::Rc};
+
+        use crate::get_component;
+
+        use super::*;
+
+        #[test]
+        #[should_panic(
+            expected = "get_component: Provided component type is present in query results."
+        )]
+        fn panics_when_the_component_is_not_present_in_results() {
+            let qr = QueryResult {
+                entity: Entity(0),
+                components: vec![Rc::new(RefCell::new(
+                    Box::new(EmptyComponent {}) as Box<dyn Component>
+                ))],
+            };
+
+            get_component!(qr, AnotherEmptyComponent);
+        }
+
+        #[test]
+        fn gives_back_component_when_it_is_present_in_results() {}
+    }
+}

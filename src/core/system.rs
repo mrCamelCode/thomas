@@ -1,9 +1,6 @@
-use crate::{Component, Query};
+use crate::{Query, QueryResult};
 
-// pub type System = dyn Fn(Vec<&dyn Component>) -> ();
-// pub type SystemMut = dyn FnMut(Vec<&mut dyn Component>) -> ();
-
-pub struct System<T> {
-  query: Query,
-  operator: dyn Fn(dyn Iterator<Item = T>) -> (),
+pub struct System {
+    query: Query,
+    operator: dyn Fn(QueryResult) -> (),
 }
