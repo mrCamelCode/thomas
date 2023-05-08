@@ -1,17 +1,13 @@
 use std::ops::Deref;
 
-use crate::{Component, Coords, Entity, Identity, StoredComponent, Transform};
+use crate::{Component, Entity, StoredComponent};
 
 pub struct Query {
     components: Vec<ComponentQueryData>,
-    use_mut: bool,
 }
 impl Query {
     pub fn new() -> Self {
-        Self {
-            components: vec![],
-            use_mut: false,
-        }
+        Self { components: vec![] }
     }
 
     pub fn has<T: Component>(mut self) -> Self {
@@ -20,13 +16,10 @@ impl Query {
         self
     }
 
+    // TODO: Figure out how to implement.
     // pub fn has_where<T: Component>(&mut self, predicate: fn(&T) -> bool) {
     //     self.components.push(ComponentQueryData::new(T::name(), predicate));
     // }
-
-    pub fn use_mut(&mut self) {
-        self.use_mut = true;
-    }
 
     pub fn components(&self) -> &Vec<ComponentQueryData> {
         &self.components
@@ -40,40 +33,6 @@ impl Query {
     }
 }
 
-// struct ComponentQueryData<T> {
-//     component_name: &'static str,
-//     predicate: fn(&T) -> bool,
-// }
-// impl<T> ComponentQueryData<T> where T: Component {
-//     fn new(component_name: &'static str, predicate: fn(&T) -> bool) -> Self {
-//         Self {
-//             component_name,
-//             predicate,
-//         }
-//     }
-// }
-
-fn tmp_example_interface_use() {
-    let q = Query::new().has::<Transform>().has::<Identity>();
-
-    // em.query(q);
-    let results: Vec<&dyn Component> = vec![
-        &Transform {
-            coords: Coords::zero(),
-        },
-        &Identity {
-            id: "01".to_string(),
-            name: "a guy".to_string(),
-        },
-    ];
-
-    fn system(stuff: Vec<&dyn Component>) {}
-}
-
-// pub struct QueryResult<'a> {
-//     pub(crate) entity: Entity,
-//     pub(crate) components: Vec<&'a Box<dyn Component>>,
-// }
 pub struct QueryResult {
     pub(crate) entity: Entity,
     pub(crate) components: Vec<StoredComponent>,
