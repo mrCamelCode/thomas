@@ -97,6 +97,18 @@ mod tests {
         }
 
         #[test]
-        fn gives_back_component_when_it_is_present_in_results() {}
+        fn gives_back_component_when_it_is_present_in_results() {
+            let qr = QueryResult {
+                entity: Entity(0),
+                components: vec![Rc::new(RefCell::new(
+                    Box::new(EmptyComponent {}) as Box<dyn Component>
+                ))],
+            };
+
+            let comp: &EmptyComponent = get_component!(qr, EmptyComponent);
+
+            assert_eq!(comp.component_name(), EmptyComponent::name());
+
+        }
     }
 }
