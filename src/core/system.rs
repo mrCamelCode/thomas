@@ -1,14 +1,17 @@
 use crate::{Query, QueryResultList};
 
-type OperatorFn = fn(QueryResultList) -> ();
+pub type OperatorFn = dyn Fn(QueryResultList) -> ();
 
 pub struct System {
     query: Query,
-    operator: OperatorFn,
+    operator: Box<OperatorFn>,
 }
 impl System {
-    pub fn new(query: Query, operator: OperatorFn) -> Self {
-        Self { query, operator }
+    pub fn new(query: Query, operator: impl Fn(QueryResultList) -> () + 'static) -> Self {
+        Self {
+            query,
+            operator: Box::new(operator),
+        }
     }
 
     pub(crate) fn query(&self) -> &Query {

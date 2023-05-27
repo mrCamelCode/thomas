@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{EntityManager, Query, System};
+use crate::{EntityManager, OperatorFn, Query, System, TerminalRendererOptions};
 
 const EVENT_INIT: &str = "init";
 const EVENT_UPDATE: &str = "update";
@@ -8,7 +8,7 @@ const EVENT_RENDER: &str = "render";
 
 #[derive(PartialEq, Eq)]
 pub enum Renderer {
-    Terminal,
+    Terminal(TerminalRendererOptions),
 }
 
 pub struct Game {
@@ -74,7 +74,7 @@ impl Game {
 
     fn setup_renderer(self, renderer: Renderer) -> Self {
         match renderer {
-            Renderer::Terminal => {
+            Renderer::Terminal(options) => {
                 return self.add_system(EVENT_RENDER, System::new(Query::new(), |qr| {}));
             }
             _ => self,
