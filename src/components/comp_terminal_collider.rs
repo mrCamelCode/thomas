@@ -1,4 +1,4 @@
 use crate::Component;
 
-#[derive(Component)]
+#[derive(Component, Debug)]
 pub struct TerminalCollider {}
