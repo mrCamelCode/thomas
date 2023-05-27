@@ -109,20 +109,34 @@ impl EntityManager {
     }
 
     pub fn query(&self, query: &Query) -> QueryResultList {
-        let component_names = query.component_names();
+        let allowed_component_names = query.component_names();
+        let forbidden_component_names = query.forbidden_component_names();
+        let entities_with_forbidden_components = Self::get_entities_with_components(
+            &self.components_to_entities,
+            &forbidden_component_names,
+        );
 
         QueryResultList::new(
-            Self::get_entities_with_components(&self.components_to_entities, &component_names)
-                .into_iter()
-                .map(|relevant_entity| QueryResult {
-                    entity: relevant_entity,
-                    components: Self::get_components_on_entity(
-                        &self.entities_to_components,
-                        &relevant_entity,
-                        &component_names,
-                    ),
-                })
-                .collect(),
+            Self::get_entities_with_components(
+                &self.components_to_entities,
+                &allowed_component_names,
+            )
+            .into_iter()
+            .filter_map(|matching_entity| {
+                if entities_with_forbidden_components.contains(&matching_entity) {
+                    None
+                } else {
+                    Some(QueryResult {
+                        entity: matching_entity,
+                        components: Self::get_components_on_entity(
+                            &self.entities_to_components,
+                            &matching_entity,
+                            &allowed_component_names,
+                        ),
+                    })
+                }
+            })
+            .collect(),
         )
     }
 
@@ -298,7 +312,8 @@ mod tests {
                 .expect("The component map was added for the entity");
 
             let comp = component_map.get(TestComponent::name()).unwrap().borrow();
-            let test_component = TestComponent::coerce(&comp).expect("Component is TestComponent");
+            let test_component =
+                TestComponent::coerce(comp.as_ref()).expect("Component is TestComponent");
 
             assert!(component_map.get(TestComponent::name()).is_some());
             assert_eq!(test_component.prop1, 1);
@@ -336,11 +351,12 @@ mod tests {
                     .borrow(),
             );
 
-            let test_component = TestComponent::coerce(&comp1).expect("Component is TestComponent");
-            let other_test_component =
-                OtherTestComponent::coerce(&comp2).expect("Component is OtherTestComponent");
-            let another_test_component =
-                AnotherTestComponent::coerce(&comp3).expect("Component is AnotherTestComponent");
+            let test_component =
+                TestComponent::coerce(comp1.as_ref()).expect("Component is TestComponent");
+            let other_test_component = OtherTestComponent::coerce(comp2.as_ref())
+                .expect("Component is OtherTestComponent");
+            let another_test_component = AnotherTestComponent::coerce(comp3.as_ref())
+                .expect("Component is AnotherTestComponent");
 
             assert!(component_map.get(TestComponent::name()).is_some());
             assert_eq!(test_component.prop1, 1);
@@ -387,9 +403,15 @@ mod tests {
 
             assert_eq!(component_map.len(), 1);
             assert_eq!(
-                TestComponent::coerce(&component_map.get(TestComponent::name()).unwrap().borrow())
-                    .unwrap()
-                    .prop1,
+                TestComponent::coerce(
+                    component_map
+                        .get(TestComponent::name())
+                        .unwrap()
+                        .borrow()
+                        .as_ref()
+                )
+                .unwrap()
+                .prop1,
                 1
             );
         }
@@ -485,12 +507,13 @@ mod tests {
             assert_eq!(em.entities_to_components.len(), 1);
             assert_eq!(
                 OtherTestComponent::coerce(
-                    &em.entities_to_components
+                    em.entities_to_components
                         .get(&Entity(0))
                         .expect("Entity 0 exists")
                         .get(OtherTestComponent::name())
                         .expect("OtherTestComponent is on Entity 0")
                         .borrow()
+                        .as_ref()
                 )
                 .expect("OtherTestComponent could be coerced.")
                 .prop1,
@@ -525,12 +548,13 @@ mod tests {
             assert_eq!(em.entities_to_components.len(), 1);
             assert_eq!(
                 TestComponent::coerce(
-                    &em.entities_to_components
+                    em.entities_to_components
                         .get(&Entity(0))
                         .expect("Entity 0 exists")
                         .get(TestComponent::name())
                         .expect("TestComponent is on Entity 0")
                         .borrow()
+                        .as_ref()
                 )
                 .expect("TestComponent could be coerced.")
                 .prop1,
@@ -638,211 +662,496 @@ mod tests {
     mod test_query {
         use super::*;
 
-        #[test]
-        fn query_returns_only_relevant_matches() {
-            let mut em = EntityManager::new();
+        mod without_forbidden_components {
+            use super::*;
 
-            em.add_entity(
-                Entity(0),
-                vec![
-                    Box::new(TestComponent { prop1: 10 }),
-                    Box::new(AnotherTestComponent { prop1: 100 }),
-                ],
-            );
-            em.add_entity(Entity(1), vec![Box::new(TestComponent { prop1: 20 })]);
+            #[test]
+            fn query_returns_only_relevant_matches() {
+                let mut em = EntityManager::new();
 
-            let query_results = em.query(&Query::new().has::<AnotherTestComponent>());
+                em.add_entity(
+                    Entity(0),
+                    vec![
+                        Box::new(TestComponent { prop1: 10 }),
+                        Box::new(AnotherTestComponent { prop1: 100 }),
+                    ],
+                );
+                em.add_entity(Entity(1), vec![Box::new(TestComponent { prop1: 20 })]);
 
-            assert_eq!((*query_results).len(), 1);
-            assert_eq!(query_results.get(0).unwrap().entity, Entity(0));
-        }
+                let query_results = em.query(&Query::new().has::<AnotherTestComponent>());
 
-        #[test]
-        fn complex_query_for_more_than_one_component_match_works() {
-            let mut em = EntityManager::new();
-
-            em.add_entity(
-                Entity(0),
-                vec![
-                    Box::new(TestComponent { prop1: 10 }),
-                    Box::new(AnotherTestComponent { prop1: 100 }),
-                    Box::new(EmptyComponent {}),
-                ],
-            );
-            em.add_entity(Entity(1), vec![Box::new(TestComponent { prop1: 20 })]);
-            em.add_entity(
-                Entity(2),
-                vec![
-                    Box::new(EmptyComponent {}),
-                    Box::new(TestComponent { prop1: 1 }),
-                ],
-            );
-
-            let query_results =
-                em.query(&Query::new().has::<EmptyComponent>().has::<TestComponent>());
-
-            assert_eq!((*query_results).len(), 2);
-            assert!(query_results
-                .iter()
-                .find(|result| result.entity == Entity(0))
-                .is_some());
-            assert!(query_results
-                .iter()
-                .find(|result| result.entity == Entity(2))
-                .is_some());
-        }
-
-        #[test]
-        fn can_read_queried_components() {
-            let mut em = EntityManager::new();
-
-            em.add_entity(
-                Entity(0),
-                vec![
-                    Box::new(TestComponent { prop1: 10 }),
-                    Box::new(AnotherTestComponent { prop1: 100 }),
-                ],
-            );
-            em.add_entity(Entity(1), vec![Box::new(TestComponent { prop1: 20 })]);
-
-            let query_results = em.query(&Query::new().has::<TestComponent>());
-
-            assert_eq!((*query_results).len(), 2);
-
-            for result in &*query_results {
-                match result.entity {
-                    Entity(0) => assert_eq!(
-                        TestComponent::coerce(&result.components[0].borrow())
-                            .unwrap()
-                            .prop1,
-                        10
-                    ),
-                    Entity(1) => assert_eq!(
-                        TestComponent::coerce(&result.components[0].borrow())
-                            .unwrap()
-                            .prop1,
-                        20
-                    ),
-                    entity => panic!("Entity present in results that should not be: {:?}", entity),
-                }
+                assert_eq!((*query_results).len(), 1);
+                assert_eq!(query_results.get(0).unwrap().entity, Entity(0));
             }
-        }
 
-        #[test]
-        fn can_mutate_queried_components() {
-            let mut em = EntityManager::new();
+            #[test]
+            fn complex_query_for_more_than_one_component_match_works() {
+                let mut em = EntityManager::new();
 
-            em.add_entity(
-                Entity(0),
-                vec![
-                    Box::new(TestComponent { prop1: 10 }),
-                    Box::new(AnotherTestComponent { prop1: 100 }),
-                    Box::new(OtherTestComponent { prop1: 20 }),
-                ],
-            );
-            em.add_entity(
-                Entity(1),
-                vec![
-                    Box::new(TestComponent { prop1: 20 }),
-                    Box::new(AnotherTestComponent { prop1: 2 }),
-                ],
-            );
+                em.add_entity(
+                    Entity(0),
+                    vec![
+                        Box::new(TestComponent { prop1: 10 }),
+                        Box::new(AnotherTestComponent { prop1: 100 }),
+                        Box::new(EmptyComponent {}),
+                    ],
+                );
+                em.add_entity(Entity(1), vec![Box::new(TestComponent { prop1: 20 })]);
+                em.add_entity(
+                    Entity(2),
+                    vec![
+                        Box::new(EmptyComponent {}),
+                        Box::new(TestComponent { prop1: 1 }),
+                    ],
+                );
 
-            let query_results = em.query(
-                &Query::new()
-                    .has::<TestComponent>()
-                    .has::<AnotherTestComponent>(),
-            );
+                let query_results =
+                    em.query(&Query::new().has::<EmptyComponent>().has::<TestComponent>());
 
-            assert_eq!(query_results.len(), 2);
+                assert_eq!((*query_results).len(), 2);
+                assert!(query_results
+                    .iter()
+                    .find(|result| result.entity == Entity(0))
+                    .is_some());
+                assert!(query_results
+                    .iter()
+                    .find(|result| result.entity == Entity(2))
+                    .is_some());
+            }
 
-            for result in &*query_results {
-                if result.entity == Entity(0) {
-                    if let Some(raw_another_test_component) = result
-                        .components
-                        .iter()
-                        .find(|comp| comp.borrow().component_name() == AnotherTestComponent::name())
-                    {
-                        AnotherTestComponent::coerce_mut(
-                            &mut raw_another_test_component.borrow_mut(),
-                        )
-                        .unwrap()
-                        .prop1 = 50;
-                    }
+            #[test]
+            fn can_read_queried_components() {
+                let mut em = EntityManager::new();
 
-                    if let Some(raw_test_component) = result
-                        .components
-                        .iter()
-                        .find(|comp| comp.borrow().component_name() == TestComponent::name())
-                    {
-                        TestComponent::coerce_mut(&mut raw_test_component.borrow_mut())
-                            .unwrap()
-                            .prop1 = 1;
-                    }
-                } else if result.entity == Entity(1) {
-                    if let Some(raw_test_component) = result
-                        .components
-                        .iter()
-                        .find(|comp| comp.borrow().component_name() == TestComponent::name())
-                    {
-                        TestComponent::coerce_mut(&mut raw_test_component.borrow_mut())
-                            .unwrap()
-                            .prop1 = 240;
+                em.add_entity(
+                    Entity(0),
+                    vec![
+                        Box::new(TestComponent { prop1: 10 }),
+                        Box::new(AnotherTestComponent { prop1: 100 }),
+                    ],
+                );
+                em.add_entity(Entity(1), vec![Box::new(TestComponent { prop1: 20 })]);
+
+                let query_results = em.query(&Query::new().has::<TestComponent>());
+
+                assert_eq!((*query_results).len(), 2);
+
+                for result in &*query_results {
+                    match result.entity {
+                        Entity(0) => assert_eq!(
+                            TestComponent::coerce(result.components[0].borrow().as_ref())
+                                .unwrap()
+                                .prop1,
+                            10
+                        ),
+                        Entity(1) => assert_eq!(
+                            TestComponent::coerce(result.components[0].borrow().as_ref())
+                                .unwrap()
+                                .prop1,
+                            20
+                        ),
+                        entity => {
+                            panic!("Entity present in results that should not be: {:?}", entity)
+                        }
                     }
                 }
             }
 
-            for result in &*query_results {
-                match result.entity {
-                    Entity(0) => {
-                        let test_component = result
+            #[test]
+            fn can_mutate_queried_components() {
+                let mut em = EntityManager::new();
+
+                em.add_entity(
+                    Entity(0),
+                    vec![
+                        Box::new(TestComponent { prop1: 10 }),
+                        Box::new(AnotherTestComponent { prop1: 100 }),
+                        Box::new(OtherTestComponent { prop1: 20 }),
+                    ],
+                );
+                em.add_entity(
+                    Entity(1),
+                    vec![
+                        Box::new(TestComponent { prop1: 20 }),
+                        Box::new(AnotherTestComponent { prop1: 2 }),
+                    ],
+                );
+
+                let query_results = em.query(
+                    &Query::new()
+                        .has::<TestComponent>()
+                        .has::<AnotherTestComponent>(),
+                );
+
+                assert_eq!(query_results.len(), 2);
+
+                for result in &*query_results {
+                    if result.entity == Entity(0) {
+                        if let Some(raw_another_test_component) =
+                            result.components.iter().find(|comp| {
+                                comp.borrow().component_name() == AnotherTestComponent::name()
+                            })
+                        {
+                            AnotherTestComponent::coerce_mut(
+                                raw_another_test_component.borrow_mut().as_mut(),
+                            )
+                            .unwrap()
+                            .prop1 = 50;
+                        }
+
+                        if let Some(raw_test_component) = result
                             .components
                             .iter()
                             .find(|comp| comp.borrow().component_name() == TestComponent::name())
-                            .unwrap()
-                            .borrow();
-                        let another_test_component = result
-                            .components
-                            .iter()
-                            .find(|comp| {
-                                comp.borrow().component_name() == AnotherTestComponent::name()
-                            })
-                            .unwrap()
-                            .borrow();
-
-                        assert_eq!(TestComponent::coerce(&test_component).unwrap().prop1, 1);
-                        assert_eq!(
-                            AnotherTestComponent::coerce(&another_test_component)
+                        {
+                            TestComponent::coerce_mut(raw_test_component.borrow_mut().as_mut())
                                 .unwrap()
-                                .prop1,
-                            50
-                        );
-                    }
-                    Entity(1) => {
-                        let test_component = result
+                                .prop1 = 1;
+                        }
+                    } else if result.entity == Entity(1) {
+                        if let Some(raw_test_component) = result
                             .components
                             .iter()
                             .find(|comp| comp.borrow().component_name() == TestComponent::name())
-                            .unwrap()
-                            .borrow();
-                        let another_test_component = result
-                            .components
-                            .iter()
-                            .find(|comp| {
-                                comp.borrow().component_name() == AnotherTestComponent::name()
-                            })
-                            .unwrap()
-                            .borrow();
+                        {
+                            TestComponent::coerce_mut(raw_test_component.borrow_mut().as_mut())
+                                .unwrap()
+                                .prop1 = 240;
+                        }
+                    }
+                }
 
-                        assert_eq!(TestComponent::coerce(&test_component).unwrap().prop1, 240);
-                        assert_eq!(
-                            AnotherTestComponent::coerce(&another_test_component)
+                for result in &*query_results {
+                    match result.entity {
+                        Entity(0) => {
+                            let test_component = result
+                                .components
+                                .iter()
+                                .find(|comp| {
+                                    comp.borrow().component_name() == TestComponent::name()
+                                })
+                                .unwrap()
+                                .borrow();
+                            let another_test_component = result
+                                .components
+                                .iter()
+                                .find(|comp| {
+                                    comp.borrow().component_name() == AnotherTestComponent::name()
+                                })
+                                .unwrap()
+                                .borrow();
+
+                            assert_eq!(
+                                TestComponent::coerce(test_component.as_ref())
+                                    .unwrap()
+                                    .prop1,
+                                1
+                            );
+                            assert_eq!(
+                                AnotherTestComponent::coerce(another_test_component.as_ref())
+                                    .unwrap()
+                                    .prop1,
+                                50
+                            );
+                        }
+                        Entity(1) => {
+                            let test_component = result
+                                .components
+                                .iter()
+                                .find(|comp| {
+                                    comp.borrow().component_name() == TestComponent::name()
+                                })
+                                .unwrap()
+                                .borrow();
+                            let another_test_component = result
+                                .components
+                                .iter()
+                                .find(|comp| {
+                                    comp.borrow().component_name() == AnotherTestComponent::name()
+                                })
+                                .unwrap()
+                                .borrow();
+
+                            assert_eq!(
+                                TestComponent::coerce(test_component.as_ref())
+                                    .unwrap()
+                                    .prop1,
+                                240
+                            );
+                            assert_eq!(
+                                AnotherTestComponent::coerce(another_test_component.as_ref())
+                                    .unwrap()
+                                    .prop1,
+                                2
+                            );
+                        }
+                        entity => {
+                            panic!("Entity present in results that should not be: {:?}", entity)
+                        }
+                    }
+                }
+            }
+        }
+
+        mod with_forbidden_components {
+            use super::*;
+
+            #[test]
+            fn query_has_no_results_when_the_forbidden_components_remove_all_potential_matches() {
+                let mut em = EntityManager::new();
+
+                em.add_entity(
+                    Entity(0),
+                    vec![
+                        Box::new(TestComponent { prop1: 10 }),
+                        Box::new(AnotherTestComponent { prop1: 100 }),
+                    ],
+                );
+                em.add_entity(Entity(1), vec![Box::new(TestComponent { prop1: 20 })]);
+
+                let query_results = em.query(
+                    &Query::new()
+                        .has::<AnotherTestComponent>()
+                        .has_no::<TestComponent>(),
+                );
+
+                assert!(query_results.is_empty());
+            }
+
+            #[test]
+            fn query_returns_only_relevant_matches() {
+                let mut em = EntityManager::new();
+
+                em.add_entity(
+                    Entity(0),
+                    vec![
+                        Box::new(TestComponent { prop1: 10 }),
+                        Box::new(AnotherTestComponent { prop1: 100 }),
+                    ],
+                );
+                em.add_entity(Entity(1), vec![Box::new(TestComponent { prop1: 20 })]);
+
+                let query_results = em.query(
+                    &Query::new()
+                        .has::<TestComponent>()
+                        .has_no::<AnotherTestComponent>(),
+                );
+
+                assert_eq!((*query_results).len(), 1);
+                assert_eq!(query_results.get(0).unwrap().entity, Entity(1));
+            }
+
+            #[test]
+            fn complex_query_for_more_than_one_component_match_works() {
+                let mut em = EntityManager::new();
+
+                em.add_entity(
+                    Entity(0),
+                    vec![
+                        Box::new(TestComponent { prop1: 10 }),
+                        Box::new(AnotherTestComponent { prop1: 100 }),
+                        Box::new(EmptyComponent {}),
+                    ],
+                );
+                em.add_entity(Entity(1), vec![Box::new(TestComponent { prop1: 20 })]);
+                em.add_entity(
+                    Entity(2),
+                    vec![
+                        Box::new(EmptyComponent {}),
+                        Box::new(TestComponent { prop1: 1 }),
+                    ],
+                );
+
+                let query_results = em.query(
+                    &Query::new()
+                        .has::<EmptyComponent>()
+                        .has::<TestComponent>()
+                        .has_no::<AnotherTestComponent>(),
+                );
+
+                assert_eq!((*query_results).len(), 1);
+                assert!(query_results
+                    .iter()
+                    .find(|result| result.entity == Entity(2))
+                    .is_some());
+            }
+
+            #[test]
+            fn can_read_queried_components() {
+                let mut em = EntityManager::new();
+
+                em.add_entity(
+                    Entity(0),
+                    vec![
+                        Box::new(TestComponent { prop1: 10 }),
+                        Box::new(AnotherTestComponent { prop1: 100 }),
+                    ],
+                );
+                em.add_entity(Entity(1), vec![Box::new(TestComponent { prop1: 20 })]);
+
+                let query_results = em.query(
+                    &Query::new()
+                        .has::<TestComponent>()
+                        .has_no::<AnotherTestComponent>(),
+                );
+
+                assert_eq!((*query_results).len(), 1);
+
+                for result in &*query_results {
+                    match result.entity {
+                        Entity(1) => assert_eq!(
+                            TestComponent::coerce(result.components[0].borrow().as_ref())
                                 .unwrap()
                                 .prop1,
-                            2
-                        );
+                            20
+                        ),
+                        entity => {
+                            panic!("Entity present in results that should not be: {:?}", entity)
+                        }
                     }
-                    entity => panic!("Entity present in results that should not be: {:?}", entity),
+                }
+            }
+
+            #[test]
+            fn can_mutate_queried_components() {
+                let mut em = EntityManager::new();
+
+                em.add_entity(
+                    Entity(0),
+                    vec![
+                        Box::new(TestComponent { prop1: 10 }),
+                        Box::new(AnotherTestComponent { prop1: 100 }),
+                        Box::new(OtherTestComponent { prop1: 20 }),
+                    ],
+                );
+                em.add_entity(
+                    Entity(1),
+                    vec![
+                        Box::new(TestComponent { prop1: 20 }),
+                        Box::new(AnotherTestComponent { prop1: 2 }),
+                    ],
+                );
+                em.add_entity(
+                    Entity(2),
+                    vec![
+                        Box::new(TestComponent { prop1: 50 }),
+                        Box::new(EmptyComponent {}),
+                    ],
+                );
+
+                let query_results = em.query(
+                    &Query::new()
+                        .has::<TestComponent>()
+                        .has::<AnotherTestComponent>()
+                        .has_no::<EmptyComponent>(),
+                );
+
+                assert_eq!(query_results.len(), 2);
+
+                for result in &*query_results {
+                    if result.entity == Entity(0) {
+                        if let Some(raw_another_test_component) =
+                            result.components.iter().find(|comp| {
+                                comp.borrow().component_name() == AnotherTestComponent::name()
+                            })
+                        {
+                            AnotherTestComponent::coerce_mut(
+                                raw_another_test_component.borrow_mut().as_mut(),
+                            )
+                            .unwrap()
+                            .prop1 = 50;
+                        }
+
+                        if let Some(raw_test_component) = result
+                            .components
+                            .iter()
+                            .find(|comp| comp.borrow().component_name() == TestComponent::name())
+                        {
+                            TestComponent::coerce_mut(raw_test_component.borrow_mut().as_mut())
+                                .unwrap()
+                                .prop1 = 1;
+                        }
+                    } else if result.entity == Entity(1) {
+                        if let Some(raw_test_component) = result
+                            .components
+                            .iter()
+                            .find(|comp| comp.borrow().component_name() == TestComponent::name())
+                        {
+                            TestComponent::coerce_mut(raw_test_component.borrow_mut().as_mut())
+                                .unwrap()
+                                .prop1 = 240;
+                        }
+                    }
+                }
+
+                for result in &*query_results {
+                    match result.entity {
+                        Entity(0) => {
+                            let test_component = result
+                                .components
+                                .iter()
+                                .find(|comp| {
+                                    comp.borrow().component_name() == TestComponent::name()
+                                })
+                                .unwrap()
+                                .borrow();
+                            let another_test_component = result
+                                .components
+                                .iter()
+                                .find(|comp| {
+                                    comp.borrow().component_name() == AnotherTestComponent::name()
+                                })
+                                .unwrap()
+                                .borrow();
+
+                            assert_eq!(
+                                TestComponent::coerce(test_component.as_ref())
+                                    .unwrap()
+                                    .prop1,
+                                1
+                            );
+                            assert_eq!(
+                                AnotherTestComponent::coerce(another_test_component.as_ref())
+                                    .unwrap()
+                                    .prop1,
+                                50
+                            );
+                        }
+                        Entity(1) => {
+                            let test_component = result
+                                .components
+                                .iter()
+                                .find(|comp| {
+                                    comp.borrow().component_name() == TestComponent::name()
+                                })
+                                .unwrap()
+                                .borrow();
+                            let another_test_component = result
+                                .components
+                                .iter()
+                                .find(|comp| {
+                                    comp.borrow().component_name() == AnotherTestComponent::name()
+                                })
+                                .unwrap()
+                                .borrow();
+
+                            assert_eq!(
+                                TestComponent::coerce(test_component.as_ref())
+                                    .unwrap()
+                                    .prop1,
+                                240
+                            );
+                            assert_eq!(
+                                AnotherTestComponent::coerce(another_test_component.as_ref())
+                                    .unwrap()
+                                    .prop1,
+                                2
+                            );
+                        }
+                        entity => {
+                            panic!("Entity present in results that should not be: {:?}", entity)
+                        }
+                    }
                 }
             }
         }
@@ -1087,7 +1396,7 @@ mod tests {
 
             assert_eq!(results.len(), 1);
             assert_eq!(
-                TestComponent::coerce(&results[0].borrow())
+                TestComponent::coerce(results[0].borrow().as_ref())
                     .expect("Only result is TestComponent")
                     .prop1,
                 10
@@ -1114,7 +1423,7 @@ mod tests {
 
             assert_eq!(results.len(), 1);
             assert_eq!(
-                TestComponent::coerce(&results[0].borrow())
+                TestComponent::coerce(results[0].borrow().as_ref())
                     .expect("Only result is TestComponent")
                     .prop1,
                 10
@@ -1135,7 +1444,7 @@ mod tests {
 
             assert_eq!(results.len(), 1);
             assert_eq!(
-                TestComponent::coerce(&results[0].borrow())
+                TestComponent::coerce(results[0].borrow().as_ref())
                     .expect("Only result is TestComponent")
                     .prop1,
                 10
@@ -1171,7 +1480,7 @@ mod tests {
                 .find(|result| result.borrow().component_name() == TestComponent::name())
                 .expect("Can find TestComponent")
                 .borrow();
-            let test_component = TestComponent::coerce(&raw_test_component).unwrap();
+            let test_component = TestComponent::coerce(raw_test_component.as_ref()).unwrap();
 
             let raw_another_test_component = results
                 .iter()
@@ -1179,14 +1488,14 @@ mod tests {
                 .expect("Can find AnotherTestComponent")
                 .borrow();
             let another_test_component =
-                AnotherTestComponent::coerce(&raw_another_test_component).unwrap();
+                AnotherTestComponent::coerce(raw_another_test_component.as_ref()).unwrap();
 
             let raw_empty_component = results
                 .iter()
                 .find(|result| result.borrow().component_name() == EmptyComponent::name())
                 .expect("Can find EmptyComponent")
                 .borrow();
-            let empty_component_option = EmptyComponent::coerce(&raw_empty_component);
+            let empty_component_option = EmptyComponent::coerce(raw_empty_component.as_ref());
 
             assert_eq!(results.len(), 3);
             assert_eq!(test_component.prop1, 10);
@@ -1231,7 +1540,7 @@ mod tests {
 
             assert_eq!(result.len(), 1);
 
-            EmptyComponent::coerce(&result[0].borrow())
+            EmptyComponent::coerce(result[0].borrow().as_ref())
                 .expect("The one component is an EmptyComponent");
         }
 
@@ -1253,11 +1562,12 @@ mod tests {
             assert_eq!(result.len(), 2);
             assert_eq!(
                 TestComponent::coerce(
-                    &result
+                    result
                         .iter()
                         .find(|comp| comp.borrow().component_name() == TestComponent::name())
                         .expect("It can find the TestComponent in the results")
                         .borrow()
+                        .as_ref()
                 )
                 .unwrap()
                 .prop1,

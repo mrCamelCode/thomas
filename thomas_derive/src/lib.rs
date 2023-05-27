@@ -31,15 +31,15 @@ fn impl_component_macro(ast: &syn::DeriveInput) -> TokenStream {
                 self
             }
 
-            fn is_component_type(comp: &Box<dyn Component>) -> bool where Self: Sized{
+            fn is_component_type(comp: &dyn Component) -> bool where Self: Sized{
                 comp.component_name() == Self::name()
             }
 
-            fn coerce(comp: &Box<dyn Component>) -> Option<&Self> where Self: Sized {
+            fn coerce(comp: &dyn Component) -> Option<&Self> where Self: Sized {
                 comp.as_any().downcast_ref::<Self>()
             }
 
-            fn coerce_mut(comp: &mut Box<dyn Component>) -> Option<&mut Self> where Self: Sized {
+            fn coerce_mut(comp: &mut dyn Component) -> Option<&mut Self> where Self: Sized {
                 comp.as_any_mut().downcast_mut::<Self>()
             }
         }
@@ -68,6 +68,7 @@ pub fn get_component(input: TokenStream) -> TokenStream {
     let component_type =
         syn::parse_str::<syn::Ident>(&iter.next().unwrap().span().source_text().unwrap()).unwrap();
 
+    // TODO: This currently doesn't work because of Rust complaining about trying to use a temp value or some such.
     let gen = quote! {
         #component_type::coerce(
             &#query_result
