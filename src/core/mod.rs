@@ -15,3 +15,6 @@ pub use entity_manager::*;
 
 mod query;
 pub use query::*;
+
+mod game;
+pub use game::*;
