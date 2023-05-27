@@ -1,24 +1,9 @@
-use std::{ops::Deref, rc::Rc};
+use std::{
+    cell::{Ref, RefMut},
+    ops::Deref,
+};
 
-use crate::{Component, Entity, Identity, StoredComponent};
-
-// TODO: Currently doesn't work because of trying to use a borrowed value that
-// isn't available after all this.
-#[macro_export]
-macro_rules! get_component {
-    ($results:ident, $typ:ty) => {{
-        $results
-            .components
-            .iter()
-            .find(|comp| comp.borrow().component_name() == <$typ>::name())
-            .expect("get_component: Provided component type is present in query results.")
-            .borrow()
-
-        // let comp_ref = comp.as_ref();
-
-        // <$typ>::coerce(comp_ref)
-    }};
-}
+use crate::{Component, Entity, StoredComponent};
 
 pub struct Query {
     allowed_components: Vec<ComponentQueryData>,
@@ -79,16 +64,65 @@ pub struct QueryResult {
     pub(crate) components: Vec<StoredComponent>,
 }
 impl QueryResult {
-    // pub fn get<T: Component>(&self) -> &T {
-    //     let comp = self
-    //         .components
-    //         .iter()
-    //         .find(|comp| comp.borrow().component_name() == T::name())
-    //         .expect("Provided component type is present in query results.")
-    //         .borrow();
+    pub fn try_get<T>(&self) -> Option<Ref<T>>
+    where
+        T: Component + 'static,
+    {
+        for component in &self.components {
+            if (**component.borrow()).as_any().is::<T>() {
+                return Some(Ref::map(component.borrow(), |component| {
+                    (**component).as_any().downcast_ref::<T>().unwrap()
+                }));
+            }
+        }
 
-    //     T::coerce(comp.as_ref()).unwrap()
-    // }
+        None
+    }
+
+    pub fn try_get_mut<T>(&self) -> Option<RefMut<T>>
+    where
+        T: Component + 'static,
+    {
+        for component in &self.components {
+            if (**component.borrow()).as_any().is::<T>() {
+                return Some(RefMut::map(component.borrow_mut(), |component| {
+                    (**component).as_any_mut().downcast_mut::<T>().unwrap()
+                }));
+            }
+        }
+
+        None
+    }
+
+    pub fn get<T>(&self) -> Ref<T>
+    where
+        T: Component + 'static,
+    {
+        if let Some(component) = self.try_get::<T>() {
+            return component;
+        }
+
+        panic!(
+            "Component {} was not present on Entity {}.",
+            T::name(),
+            *self.entity
+        );
+    }
+
+    pub fn get_mut<T>(&self) -> RefMut<T>
+    where
+        T: Component + 'static,
+    {
+        if let Some(component) = self.try_get_mut::<T>() {
+            return component;
+        }
+
+        panic!(
+            "Component {} was not present on Entity {}",
+            T::name(),
+            *self.entity
+        );
+    }
 }
 
 pub struct QueryResultList {
@@ -116,35 +150,16 @@ impl ComponentQueryData {
     }
 }
 
-fn test() {
-    let qr = QueryResult {
-        entity: Entity(0),
-        components: vec![],
-    };
-
-    // let comp = Identity::coerce(get_component!(qr, Identity).as_ref());
-
-    let comp = {
-        let comp_ref = Rc::clone(
-            qr.components
-                .iter()
-                .find(|comp| comp.borrow().component_name() == Identity::name())
-                .unwrap(),
-        );
-
-        let t = comp_ref.borrow();
-        let comp: Option<&Identity> = Identity::coerce(t.as_ref());    
-        
-        comp
-    };
-
-    println!("id: {}", comp.unwrap().id);
-}
-
 #[cfg(test)]
 mod tests {
-    // use super::*;
+    use super::*;
     use crate::Component;
+    use std::{cell::RefCell, rc::Rc};
+
+    #[derive(Component)]
+    struct TestComponent {
+        prop: String,
+    }
 
     #[derive(Component)]
     struct EmptyComponent {}
@@ -152,40 +167,146 @@ mod tests {
     #[derive(Component)]
     struct AnotherEmptyComponent {}
 
-    mod test_get_component {
-        use std::{cell::RefCell, rc::Rc};
-
-        use crate::{Entity, QueryResult};
+    mod test_try_get {
 
         use super::*;
 
         #[test]
-        #[should_panic(
-            expected = "get_component: Provided component type is present in query results."
-        )]
-        fn panics_when_the_component_is_not_present_in_results() {
+        fn gives_back_component_when_it_is_present_in_the_results() {
+            let qr = QueryResult {
+                entity: Entity(0),
+                components: vec![Rc::new(RefCell::new(Box::new(TestComponent {
+                    prop: "val".to_string(),
+                })
+                    as Box<dyn Component>))],
+            };
+
+            let test_component = qr.try_get::<TestComponent>().unwrap();
+
+            assert_eq!(test_component.prop, "val");
+        }
+
+        #[test]
+        fn is_none_when_component_is_not_present_in_the_results() {
             let qr = QueryResult {
                 entity: Entity(0),
                 components: vec![Rc::new(RefCell::new(
-                    Box::new(EmptyComponent {}) as Box<dyn Component>
+                    Box::new(AnotherEmptyComponent {}) as Box<dyn Component>
                 ))],
             };
 
-            get_component!(qr, AnotherEmptyComponent);
+            let empty_component_option = qr.try_get::<EmptyComponent>();
+
+            assert!(empty_component_option.is_none());
+        }
+    }
+
+    mod test_try_get_mut {
+        use super::*;
+
+        #[test]
+        fn can_mutate_returned_component() {
+            let qr = QueryResult {
+                entity: Entity(0),
+                components: vec![Rc::new(RefCell::new(Box::new(TestComponent {
+                    prop: "val".to_string(),
+                })
+                    as Box<dyn Component>))],
+            };
+
+            let mut test_component = qr.try_get_mut::<TestComponent>().unwrap();
+
+            assert_eq!(test_component.prop, "val");
+
+            let new_prop = String::from("now for something totally different");
+
+            test_component.prop = new_prop.clone();
+
+            assert_eq!(test_component.prop, new_prop);
         }
 
-        // #[test]
-        // fn gives_back_component_when_it_is_present_in_results() {
-        //     let qr = QueryResult {
-        //         entity: Entity(0),
-        //         components: vec![Rc::new(RefCell::new(
-        //             Box::new(EmptyComponent {}) as Box<dyn Component>
-        //         ))],
-        //     };
+        #[test]
+        fn is_none_when_component_is_not_present_in_the_results() {
+            let qr = QueryResult {
+                entity: Entity(0),
+                components: vec![Rc::new(RefCell::new(
+                    Box::new(AnotherEmptyComponent {}) as Box<dyn Component>
+                ))],
+            };
 
-        //     let comp = get_component!(qr, EmptyComponent);
+            let empty_component_option = qr.try_get_mut::<EmptyComponent>();
 
-        //     assert_eq!(comp.unwrap().component_name(), EmptyComponent::name());
-        // }
+            assert!(empty_component_option.is_none());
+        }
+    }
+
+    mod test_get {
+        use super::*;
+
+        #[test]
+        fn gives_back_component_when_it_is_present_in_the_results() {
+            let qr = QueryResult {
+                entity: Entity(0),
+                components: vec![Rc::new(RefCell::new(Box::new(TestComponent {
+                    prop: "val".to_string(),
+                })
+                    as Box<dyn Component>))],
+            };
+
+            let test_component = qr.get::<TestComponent>();
+
+            assert_eq!(test_component.prop, "val");
+        }
+
+        #[test]
+        #[should_panic(expected = "Component EmptyComponent was not present on Entity 0")]
+        fn panics_when_component_is_not_present_in_the_results() {
+            let qr = QueryResult {
+                entity: Entity(0),
+                components: vec![Rc::new(RefCell::new(
+                    Box::new(AnotherEmptyComponent {}) as Box<dyn Component>
+                ))],
+            };
+
+            qr.get::<EmptyComponent>();
+        }
+    }
+
+    mod test_get_mut {
+        use super::*;
+
+        #[test]
+        fn can_mutate_returned_component() {
+            let qr = QueryResult {
+                entity: Entity(0),
+                components: vec![Rc::new(RefCell::new(Box::new(TestComponent {
+                    prop: "val".to_string(),
+                })
+                    as Box<dyn Component>))],
+            };
+
+            let mut test_component = qr.get_mut::<TestComponent>();
+
+            assert_eq!(test_component.prop, "val");
+
+            let new_prop = String::from("now for something totally different");
+
+            test_component.prop = new_prop.clone();
+
+            assert_eq!(test_component.prop, new_prop);
+        }
+
+        #[test]
+        #[should_panic(expected = "Component EmptyComponent was not present on Entity 0")]
+        fn panics_when_component_is_not_present_in_the_results() {
+            let qr = QueryResult {
+                entity: Entity(0),
+                components: vec![Rc::new(RefCell::new(
+                    Box::new(AnotherEmptyComponent {}) as Box<dyn Component>
+                ))],
+            };
+
+            qr.get_mut::<EmptyComponent>();
+        }
     }
 }
