@@ -15,7 +15,6 @@ use crate::{
       data::{Dimensions2d, Layer, Matrix},
       BehaviourList, Entity, TerminalRenderable,
   },
-  get_behaviour_name,
 };
 
 use super::Renderer;
