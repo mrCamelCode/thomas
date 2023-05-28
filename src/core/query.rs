@@ -1,152 +1,221 @@
 use std::{
+    array::IntoIter,
     cell::{Ref, RefMut},
     ops::Deref,
 };
 
-use crate::{Component, Entity, StoredComponent};
+use crate::{Component, Entity, StoredComponent, StoredComponentList};
+
+pub type WherePredicate = dyn Fn(&dyn Component) -> bool + 'static;
 
 pub struct Query {
     allowed_components: Vec<ComponentQueryData>,
     forbidden_components: Vec<ComponentQueryData>,
+    included_components: Vec<ComponentQueryData>,
 }
 impl Query {
     pub fn new() -> Self {
         Self {
             allowed_components: vec![],
             forbidden_components: vec![],
+            included_components: vec![],
         }
     }
 
-    pub fn has<T: Component>(mut self) -> Self {
+    pub fn has<T: Component + 'static>(mut self) -> Self {
         self.allowed_components
-            .push(ComponentQueryData::new(T::name()));
+            .push(ComponentQueryData::new(T::name(), None));
 
         self
     }
 
-    pub fn has_no<T: Component>(mut self) -> Self {
+    pub fn has_no<T: Component + 'static>(mut self) -> Self {
         self.forbidden_components
-            .push(ComponentQueryData::new(T::name()));
+            .push(ComponentQueryData::new(T::name(), None));
 
         self
     }
 
-    // TODO: Figure out how to implement.
-    // pub fn has_where<T: Component>(&mut self, predicate: fn(&T) -> bool) {
-    //     self.components.push(ComponentQueryData::new(T::name(), predicate));
-    // }
+    /// Whether to always include matches with the specified component. An included component
+    /// is included regardless of any constraints established in the query by
+    /// other functions like `has`, `has_no`, etc.
+    ///
+    /// # Example
+    /// ```
+    /// use thomas::{Query, Component};
+    ///
+    /// #[derive(Component)]
+    /// struct Comp1 {}
+    ///
+    /// #[derive(Component)]
+    /// struct Comp2 {}
+    ///
+    /// #[derive(Component)]
+    /// struct Comp3 {}
+    ///
+    /// // Assuming a world with entities:
+    /// // 0: Comp1, Comp2
+    /// // 1: Comp1
+    /// // 2: Comp2
+    /// // 3: Comp2, Comp3
+    ///
+    /// Query::new()
+    ///     .has::<Comp1>()
+    ///     .has_no::<Comp2>()
+    ///     .include::<Comp3>();
+    ///
+    /// // => Query would produce results of:
+    /// // matches: [
+    /// //   Entity(1): { components: [Comp1] }
+    /// // ],
+    /// // inclusions: [
+    /// //   Entity(3): { components: [Comp3] }
+    /// // ]
+    /// ```
+    pub fn include<T: Component + 'static>(mut self) -> Self {
+        self.included_components
+            .push(ComponentQueryData::new(T::name(), None));
 
-    pub fn components(&self) -> &Vec<ComponentQueryData> {
+        self
+    }
+
+    pub fn has_where<T>(mut self, predicate: impl Fn(&T) -> bool + 'static) -> Self
+    where
+        T: Component + 'static,
+    {
+        self.allowed_components.push(ComponentQueryData::new(
+            T::name(),
+            Some(Box::new(move |comp| {
+                predicate(T::cast(comp).expect(&format!(
+                    "Component provided to where clause of query can be cast to concrete Component {}",
+                    T::name()
+                )))
+            })),
+        ));
+
+        self
+    }
+
+    pub(super) fn allowed_components(&self) -> &Vec<ComponentQueryData> {
         &self.allowed_components
     }
 
-    pub fn forbidden_components(&self) -> &Vec<ComponentQueryData> {
+    pub(super) fn forbidden_components(&self) -> &Vec<ComponentQueryData> {
         &self.forbidden_components
     }
 
-    pub fn component_names(&self) -> Vec<&'static str> {
+    pub(super) fn included_components(&self) -> &Vec<ComponentQueryData> {
+        &self.included_components
+    }
+
+    pub(super) fn allowed_component_names(&self) -> Vec<&'static str> {
         self.allowed_components
             .iter()
             .map(|component_query_data| component_query_data.component_name)
             .collect()
     }
 
-    pub fn forbidden_component_names(&self) -> Vec<&'static str> {
+    pub(super) fn forbidden_component_names(&self) -> Vec<&'static str> {
         self.forbidden_components
             .iter()
             .map(|component_query_data| component_query_data.component_name)
             .collect()
+    }
+
+    pub(super) fn included_component_names(&self) -> Vec<&'static str> {
+        self.included_components
+            .iter()
+            .map(|component_query_data| component_query_data.component_name)
+            .collect()
+    }
+
+    pub(super) fn has_inclusions(&self) -> bool {
+        return self.included_components.len() > 0;
     }
 }
 
 pub struct QueryResult {
     pub(crate) entity: Entity,
-    pub(crate) components: Vec<StoredComponent>,
+    pub(crate) components: StoredComponentList,
 }
 impl QueryResult {
-    pub fn try_get<T>(&self) -> Option<Ref<T>>
-    where
-        T: Component + 'static,
-    {
-        for component in &self.components {
-            if (**component.borrow()).as_any().is::<T>() {
-                return Some(Ref::map(component.borrow(), |component| {
-                    (**component).as_any().downcast_ref::<T>().unwrap()
-                }));
-            }
-        }
-
-        None
+    pub fn entity(&self) -> &Entity {
+        &self.entity
     }
 
-    pub fn try_get_mut<T>(&self) -> Option<RefMut<T>>
-    where
-        T: Component + 'static,
-    {
-        for component in &self.components {
-            if (**component.borrow()).as_any().is::<T>() {
-                return Some(RefMut::map(component.borrow_mut(), |component| {
-                    (**component).as_any_mut().downcast_mut::<T>().unwrap()
-                }));
-            }
-        }
-
-        None
-    }
-
-    pub fn get<T>(&self) -> Ref<T>
-    where
-        T: Component + 'static,
-    {
-        if let Some(component) = self.try_get::<T>() {
-            return component;
-        }
-
-        panic!(
-            "Component {} was not present on Entity {}.",
-            T::name(),
-            *self.entity
-        );
-    }
-
-    pub fn get_mut<T>(&self) -> RefMut<T>
-    where
-        T: Component + 'static,
-    {
-        if let Some(component) = self.try_get_mut::<T>() {
-            return component;
-        }
-
-        panic!(
-            "Component {} was not present on Entity {}",
-            T::name(),
-            *self.entity
-        );
+    pub fn components(&self) -> &StoredComponentList {
+        &self.components
     }
 }
 
 pub struct QueryResultList {
-    list: Vec<QueryResult>,
+    matches: Vec<QueryResult>,
+    inclusions: Vec<QueryResult>,
 }
 impl QueryResultList {
-    pub fn new(results: Vec<QueryResult>) -> Self {
-        Self { list: results }
+    pub fn new(matches: Vec<QueryResult>) -> Self {
+        Self {
+            matches,
+            inclusions: vec![],
+        }
+    }
+
+    pub fn new_with_inclusions(matches: Vec<QueryResult>, inclusions: Vec<QueryResult>) -> Self {
+        Self {
+            matches,
+            inclusions,
+        }
+    }
+
+    pub fn inclusions(&self) -> &Vec<QueryResult> {
+        &self.inclusions
+    }
+}
+impl IntoIterator for QueryResultList {
+    type Item = QueryResult;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.matches.into_iter()
+    }
+}
+impl<'a> IntoIterator for &'a QueryResultList {
+    type Item = <std::slice::Iter<'a, QueryResult> as Iterator>::Item;
+    type IntoIter = std::slice::Iter<'a, QueryResult>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        (&self.matches).into_iter()
     }
 }
 impl Deref for QueryResultList {
     type Target = Vec<QueryResult>;
 
     fn deref(&self) -> &Self::Target {
-        &self.list
+        &self.matches
     }
 }
 
 pub struct ComponentQueryData {
     component_name: &'static str,
+    where_predicate: Option<Box<WherePredicate>>,
 }
 impl ComponentQueryData {
-    fn new(component_name: &'static str) -> Self {
-        Self { component_name }
+    pub(crate) fn new(
+        component_name: &'static str,
+        where_predicate: Option<Box<WherePredicate>>,
+    ) -> Self {
+        Self {
+            component_name,
+            where_predicate,
+        }
+    }
+
+    pub fn component_name(&self) -> &'static str {
+        &self.component_name
+    }
+
+    pub fn where_predicate(&self) -> &Option<Box<WherePredicate>> {
+        &self.where_predicate
     }
 }
 
@@ -175,13 +244,15 @@ mod tests {
         fn gives_back_component_when_it_is_present_in_the_results() {
             let qr = QueryResult {
                 entity: Entity(0),
-                components: vec![Rc::new(RefCell::new(Box::new(TestComponent {
-                    prop: "val".to_string(),
-                })
-                    as Box<dyn Component>))],
+                components: StoredComponentList::new(vec![Rc::new(RefCell::new(Box::new(
+                    TestComponent {
+                        prop: "val".to_string(),
+                    },
+                )
+                    as Box<dyn Component>))]),
             };
 
-            let test_component = qr.try_get::<TestComponent>().unwrap();
+            let test_component = qr.components().try_get::<TestComponent>().unwrap();
 
             assert_eq!(test_component.prop, "val");
         }
@@ -190,12 +261,13 @@ mod tests {
         fn is_none_when_component_is_not_present_in_the_results() {
             let qr = QueryResult {
                 entity: Entity(0),
-                components: vec![Rc::new(RefCell::new(
-                    Box::new(AnotherEmptyComponent {}) as Box<dyn Component>
-                ))],
+                components: StoredComponentList::new(vec![Rc::new(RefCell::new(Box::new(
+                    AnotherEmptyComponent {},
+                )
+                    as Box<dyn Component>))]),
             };
 
-            let empty_component_option = qr.try_get::<EmptyComponent>();
+            let empty_component_option = qr.components().try_get::<EmptyComponent>();
 
             assert!(empty_component_option.is_none());
         }
@@ -208,13 +280,15 @@ mod tests {
         fn can_mutate_returned_component() {
             let qr = QueryResult {
                 entity: Entity(0),
-                components: vec![Rc::new(RefCell::new(Box::new(TestComponent {
-                    prop: "val".to_string(),
-                })
-                    as Box<dyn Component>))],
+                components: StoredComponentList::new(vec![Rc::new(RefCell::new(Box::new(
+                    TestComponent {
+                        prop: "val".to_string(),
+                    },
+                )
+                    as Box<dyn Component>))]),
             };
 
-            let mut test_component = qr.try_get_mut::<TestComponent>().unwrap();
+            let mut test_component = qr.components().try_get_mut::<TestComponent>().unwrap();
 
             assert_eq!(test_component.prop, "val");
 
@@ -229,12 +303,13 @@ mod tests {
         fn is_none_when_component_is_not_present_in_the_results() {
             let qr = QueryResult {
                 entity: Entity(0),
-                components: vec![Rc::new(RefCell::new(
-                    Box::new(AnotherEmptyComponent {}) as Box<dyn Component>
-                ))],
+                components: StoredComponentList::new(vec![Rc::new(RefCell::new(Box::new(
+                    AnotherEmptyComponent {},
+                )
+                    as Box<dyn Component>))]),
             };
 
-            let empty_component_option = qr.try_get_mut::<EmptyComponent>();
+            let empty_component_option = qr.components().try_get_mut::<EmptyComponent>();
 
             assert!(empty_component_option.is_none());
         }
@@ -247,28 +322,31 @@ mod tests {
         fn gives_back_component_when_it_is_present_in_the_results() {
             let qr = QueryResult {
                 entity: Entity(0),
-                components: vec![Rc::new(RefCell::new(Box::new(TestComponent {
-                    prop: "val".to_string(),
-                })
-                    as Box<dyn Component>))],
+                components: StoredComponentList::new(vec![Rc::new(RefCell::new(Box::new(
+                    TestComponent {
+                        prop: "val".to_string(),
+                    },
+                )
+                    as Box<dyn Component>))]),
             };
 
-            let test_component = qr.get::<TestComponent>();
+            let test_component = qr.components().get::<TestComponent>();
 
             assert_eq!(test_component.prop, "val");
         }
 
         #[test]
-        #[should_panic(expected = "Component EmptyComponent was not present on Entity 0")]
+        #[should_panic(expected = "Component EmptyComponent was not present.")]
         fn panics_when_component_is_not_present_in_the_results() {
             let qr = QueryResult {
                 entity: Entity(0),
-                components: vec![Rc::new(RefCell::new(
-                    Box::new(AnotherEmptyComponent {}) as Box<dyn Component>
-                ))],
+                components: StoredComponentList::new(vec![Rc::new(RefCell::new(Box::new(
+                    AnotherEmptyComponent {},
+                )
+                    as Box<dyn Component>))]),
             };
 
-            qr.get::<EmptyComponent>();
+            qr.components().get::<EmptyComponent>();
         }
     }
 
@@ -279,13 +357,15 @@ mod tests {
         fn can_mutate_returned_component() {
             let qr = QueryResult {
                 entity: Entity(0),
-                components: vec![Rc::new(RefCell::new(Box::new(TestComponent {
-                    prop: "val".to_string(),
-                })
-                    as Box<dyn Component>))],
+                components: StoredComponentList::new(vec![Rc::new(RefCell::new(Box::new(
+                    TestComponent {
+                        prop: "val".to_string(),
+                    },
+                )
+                    as Box<dyn Component>))]),
             };
 
-            let mut test_component = qr.get_mut::<TestComponent>();
+            let mut test_component = qr.components().get_mut::<TestComponent>();
 
             assert_eq!(test_component.prop, "val");
 
@@ -297,16 +377,17 @@ mod tests {
         }
 
         #[test]
-        #[should_panic(expected = "Component EmptyComponent was not present on Entity 0")]
+        #[should_panic(expected = "Component EmptyComponent was not present.")]
         fn panics_when_component_is_not_present_in_the_results() {
             let qr = QueryResult {
                 entity: Entity(0),
-                components: vec![Rc::new(RefCell::new(
-                    Box::new(AnotherEmptyComponent {}) as Box<dyn Component>
-                ))],
+                components: StoredComponentList::new(vec![Rc::new(RefCell::new(Box::new(
+                    AnotherEmptyComponent {},
+                )
+                    as Box<dyn Component>))]),
             };
 
-            qr.get_mut::<EmptyComponent>();
+            qr.components().get_mut::<EmptyComponent>();
         }
     }
 }

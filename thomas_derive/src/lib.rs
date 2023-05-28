@@ -35,11 +35,11 @@ fn impl_component_macro(ast: &syn::DeriveInput) -> TokenStream {
                 comp.component_name() == Self::name()
             }
 
-            fn coerce(comp: &dyn Component) -> Option<&Self> where Self: Sized {
+            fn cast(comp: &dyn Component) -> Option<&Self> where Self: Sized {
                 comp.as_any().downcast_ref::<Self>()
             }
 
-            fn coerce_mut(comp: &mut dyn Component) -> Option<&mut Self> where Self: Sized {
+            fn cast_mut(comp: &mut dyn Component) -> Option<&mut Self> where Self: Sized {
                 comp.as_any_mut().downcast_mut::<Self>()
             }
         }
