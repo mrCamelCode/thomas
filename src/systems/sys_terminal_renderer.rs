@@ -12,7 +12,7 @@ use crossterm::{
 
 use crate::{
     core::{Query, System},
-    Dimensions2d, Layer, Matrix, OperatorFn, QueryResult, QueryResultList,
+    Dimensions2d, Layer, Matrix, OperatorFn, QueryResult, QueryResultList, TerminalRenderer,
 };
 
 const HORIZONTAL_OUTLINE_DELIMITER: &str = "=";
@@ -38,8 +38,54 @@ impl TerminalRendererSystem {
     }
 }
 
-fn make_render_matrix(query_results: QueryResultList) -> TerminalRendererMatrix {
-    TerminalRendererMatrix::new(Dimensions2d::new(0, 0))
+fn make_render_matrix(
+    query_results: &QueryResultList,
+    renderer_options: TerminalRendererOptions,
+) -> TerminalRendererMatrix {
+    let mut render_matrix = TerminalRendererMatrix::new(renderer_options.screen_resolution);
+
+    // TODO: Improve this syntax. Have QueryResultList go into an iterator nicer.
+    for result in &**query_results {
+        // TODO: I definitely wrote the TerminalTransform component. Probably need to push from PC and pull.
+        let (terminal_renderable_behaviour, position) = (result.get::<TerminalRenderer>(), result.get::<TransformTerminal>);
+    }
+
+    entities
+        .iter()
+        .filter_map(|(entity, behaviours)| {
+            if let Some(terminal_renderable_behaviour) = behaviours
+                .get_behaviour::<TerminalRenderable>(get_behaviour_name!(TerminalRenderable))
+            {
+                Some((entity, terminal_renderable_behaviour))
+            } else {
+                None
+            }
+        })
+        .for_each(|(entity, terminal_renderable_behaviour)| {
+            let position = entity.transform().coords().rounded();
+            let (x, y) = (position.x() as u64, position.y() as u64);
+
+            let TerminalRenderable { display, layer } = terminal_renderable_behaviour;
+
+            if is_entity_on_screen(entity) {
+                if let Some(cell) = render_matrix.get(x, y) {
+                    if layer.is_above(&cell.data().layer_of_value)
+                        || layer.is_with(&cell.data().layer_of_value)
+                    {
+                        render_matrix.update_cell_at(
+                            x,
+                            y,
+                            TerminalRendererMatrixCell {
+                                display: *display,
+                                layer_of_value: layer.clone(),
+                            },
+                        );
+                    }
+                }
+            }
+        });
+
+    render_matrix
 }
 
 // pub static TERMINAL_RENDERER_SYSTEM_INIT: System =
