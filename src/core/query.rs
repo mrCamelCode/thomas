@@ -40,6 +40,19 @@ impl Query {
     /// is included regardless of any constraints established in the query by
     /// other functions like `has`, `has_no`, etc.
     ///
+    /// # Panics
+    /// Will panic if you break the borrowing rules of Rust with an inclusion. See the Considerations
+    /// section for more details.
+    /// 
+    /// # Considerations
+    /// Because inclusions can produce a second set of matches on a query, you'll want to avoid
+    /// writing your base query in such a way that it would match on something you're including.
+    /// In this case, it's most likely you should just remove your `include`, but if you can't do
+    /// that you may need to make extra considerations. If you intend to use the component mutably,
+    /// you'll need to make sure you disjoint your base query such that you're not mutably and immutably
+    /// borrowing the same component reference at the same time so as not to break the rules of Rust.
+    /// Breaking the rules will result in a panic.
+    /// 
     /// # Example
     /// ```
     /// use thomas::{Query, Component};
