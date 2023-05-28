@@ -1,5 +1,5 @@
+use core::panic;
 use std::{
-    error::Error,
     io::stdout,
     io::Write,
     ops::{Deref, DerefMut},
@@ -12,7 +12,7 @@ use crossterm::{
 
 use crate::{
     core::{Query, System},
-    Dimensions2d, Layer, Matrix, OperatorFn, QueryResult, QueryResultList, TerminalRenderer,
+    Component, Dimensions2d, Layer, Matrix, QueryResultList, TerminalRenderer, TransformTerminal,
 };
 
 const HORIZONTAL_OUTLINE_DELIMITER: &str = "=";
@@ -21,282 +21,287 @@ const NEWLINE_DELIMITER: &str = "\r\n";
 
 const TERMINAL_DIMENSIONS_PADDING: u16 = 10;
 
-struct TerminalRendererSystem {
-    init_system: System,
-    update_system: System,
+#[derive(Component, Debug)]
+pub(crate) struct TerminalRendererState {
+    initial_terminal_size: (u16, u16),
+    options: TerminalRendererOptions,
+    prev_render: String,
+    is_initial_render: bool,
 }
-impl TerminalRendererSystem {
-    pub fn new(options: TerminalRendererOptions) -> Self {
-        Self {
-            init_system: System::new(Query::new(), move |results| {
-                println!("{:?}", options.screen_resolution);
-            }),
-            update_system: System::new(Query::new(), move |results| {
-                println!("{:?}", options.screen_resolution);
-            }),
+impl TerminalRendererState {
+    pub(crate) fn new(options: TerminalRendererOptions) -> Self {
+        TerminalRendererState {
+            initial_terminal_size: (0, 0),
+            options,
+            prev_render: String::new(),
+            is_initial_render: true,
         }
     }
 }
 
+pub(crate) struct TerminalRendererSystems {
+    init_system: System,
+    update_system: System,
+    cleanup_system: System,
+}
+impl TerminalRendererSystems {
+    pub(crate) fn new(options: TerminalRendererOptions) -> Self {
+        Self {
+            init_system: System::new(
+                Query::new().include::<TerminalRendererState>(),
+                move |results| {
+                    assert!(
+                        results.len() == 1,
+                        "There can only be one {} in the game at a time.",
+                        TerminalRendererState::name()
+                    );
+
+                    let mut state = results
+                        .inclusions()
+                        .get(0)
+                        .expect(&format!(
+                            "There is a {} available in the world at init.",
+                            TerminalRendererState::name()
+                        ))
+                        .components()
+                        .get_mut::<TerminalRendererState>();
+
+                    if let Ok(size) = terminal::size() {
+                        state.initial_terminal_size = size;
+                    } else {
+                        panic!("TerminalRenderer could not get the terminal's starting size.");
+                    }
+
+                    if state.options.screen_resolution.height() + TERMINAL_DIMENSIONS_PADDING as u64
+                        > u16::MAX as u64
+                        || state.options.screen_resolution.width()
+                            + TERMINAL_DIMENSIONS_PADDING as u64
+                            > u16::MAX as u64
+                    {
+                        panic!("TerminalRenderer's screen resolution is too large. Neither the width nor height can be greater than {}", u16::MAX - TERMINAL_DIMENSIONS_PADDING);
+                    }
+
+                    if let Err(e) = execute!(
+                        stdout(),
+                        Clear(ClearType::All),
+                        SetSize(
+                            state.options.screen_resolution.width() as u16
+                                + TERMINAL_DIMENSIONS_PADDING,
+                            state.options.screen_resolution.height() as u16
+                                + TERMINAL_DIMENSIONS_PADDING
+                        ),
+                        cursor::Hide,
+                        cursor::MoveTo(0, 0),
+                    ) {
+                        panic!(
+                            "TerminalRenderer could not do initial setup of game screen. Error: {}",
+                            e
+                        );
+                    }
+
+                    if let Err(e) = enable_raw_mode() {
+                        panic!(
+                            "TerminalRenderer could not set raw mode, cannot continue. Error: {}",
+                            e
+                        );
+                    }
+                },
+            ),
+            update_system: System::new(
+                Query::new()
+                    .has::<TerminalRenderer>()
+                    .has_where::<TransformTerminal>(move |transform_terminal| {
+                        let (x, y) = transform_terminal.coords.values();
+
+                        (x >= 0 && x as u64 <= options.screen_resolution.width())
+                            && (y >= 0 && y as u64 <= options.screen_resolution.height())
+                    })
+                    .include::<TerminalRendererState>(),
+                move |results| {
+                    let mut state = results
+                        .inclusions()
+                        .get(0)
+                        .expect(&format!(
+                            "The {} component is available on update.",
+                            TerminalRendererState::name()
+                        ))
+                        .components()
+                        .get_mut::<TerminalRendererState>();
+
+                    let new_render_string = produce_render_string(&results, &state.options);
+
+                    if state.is_initial_render {
+                        if let Err(e) = write!(stdout(), "{}", new_render_string) {
+                            panic!("Error occurred while trying to write initial render to the terminal: {e}");
+                        }
+
+                        state.is_initial_render = false;
+                    } else {
+                        let new_render_lines = new_render_string
+                            .split(NEWLINE_DELIMITER)
+                            .collect::<Vec<&str>>();
+                        let prev_render_lines = state
+                            .prev_render
+                            .split(NEWLINE_DELIMITER)
+                            .collect::<Vec<&str>>();
+
+                        for row in 0..new_render_lines.len() {
+                            if new_render_lines[row] != prev_render_lines[row] {
+                                if let Err(e) = execute!(stdout(), cursor::MoveTo(0, row as u16)) {
+                                    panic!("Error occurred while trying to move the cursor to position (0, {}): {e}", row as u16);
+                                }
+
+                                if let Err(e) = write!(
+                                    stdout(),
+                                    "{}",
+                                    new_render_lines[row].replace("\r\n", "")
+                                ) {
+                                    panic!("Error occurred while trying to write the new render to the terminal: {e}");
+                                }
+
+                                if let Err(e) = execute!(stdout(), Clear(ClearType::UntilNewLine)) {
+                                    panic!("Error occurred while trying to execute the UntilNewLine clear type: {e}");
+                                }
+                            }
+                        }
+                    }
+
+                    state.prev_render = new_render_string;
+                },
+            ),
+            cleanup_system: System::new(
+                Query::new().include::<TerminalRendererState>(),
+                |results| {
+                    let state = results
+                        .inclusions()
+                        .get(0)
+                        .expect(&format!(
+                            "The {} component is available on cleanup.",
+                            TerminalRendererState::name()
+                        ))
+                        .components()
+                        .get::<TerminalRendererState>();
+
+                    let error_message =
+                        "The terminal may be in a bad state. It's recommended to restart it if you intend to continue using this terminal instance.";
+
+                    if let Err(e) = execute!(
+                        stdout(),
+                        SetSize(state.initial_terminal_size.0, state.initial_terminal_size.1),
+                        cursor::MoveTo(0, state.initial_terminal_size.1),
+                        cursor::Show,
+                    ) {
+                        println!("Could not reset terminal size and cursor visibility. {error_message} Error: {e}");
+                    }
+
+                    if let Err(e) = disable_raw_mode() {
+                        println!("Could not disable raw mode. {error_message} Error: {e}");
+                    }
+                },
+            ),
+        }
+    }
+
+    pub(crate) fn extract_systems(self) -> (System, System, System) {
+        (self.init_system, self.update_system, self.cleanup_system)
+    }
+}
+
 fn make_render_matrix(
-    query_results: &QueryResultList,
-    renderer_options: TerminalRendererOptions,
+    update_query_results: &QueryResultList,
+    renderer_options: &TerminalRendererOptions,
 ) -> TerminalRendererMatrix {
     let mut render_matrix = TerminalRendererMatrix::new(renderer_options.screen_resolution);
 
-    // TODO: Improve this syntax. Have QueryResultList go into an iterator nicer.
-    for result in &**query_results {
-        // TODO: I definitely wrote the TerminalTransform component. Probably need to push from PC and pull.
-        let (terminal_renderable_behaviour, position) = (result.get::<TerminalRenderer>(), result.get::<TransformTerminal>);
-    }
+    for result in update_query_results {
+        let (TerminalRenderer { display, layer }, coords) = (
+            &*result.components().get::<TerminalRenderer>(),
+            result.components().get::<TransformTerminal>().coords,
+        );
 
-    entities
-        .iter()
-        .filter_map(|(entity, behaviours)| {
-            if let Some(terminal_renderable_behaviour) = behaviours
-                .get_behaviour::<TerminalRenderable>(get_behaviour_name!(TerminalRenderable))
+        let (x, y) = (coords.x() as u64, coords.y() as u64);
+
+        if let Some(cell) = render_matrix.get(x, y) {
+            if layer.is_above(&cell.data().layer_of_value)
+                || layer.is_with(&cell.data().layer_of_value)
             {
-                Some((entity, terminal_renderable_behaviour))
-            } else {
-                None
+                render_matrix.update_cell_at(
+                    x,
+                    y,
+                    TerminalRendererMatrixCell {
+                        display: *display,
+                        layer_of_value: layer.clone(),
+                    },
+                );
             }
-        })
-        .for_each(|(entity, terminal_renderable_behaviour)| {
-            let position = entity.transform().coords().rounded();
-            let (x, y) = (position.x() as u64, position.y() as u64);
-
-            let TerminalRenderable { display, layer } = terminal_renderable_behaviour;
-
-            if is_entity_on_screen(entity) {
-                if let Some(cell) = render_matrix.get(x, y) {
-                    if layer.is_above(&cell.data().layer_of_value)
-                        || layer.is_with(&cell.data().layer_of_value)
-                    {
-                        render_matrix.update_cell_at(
-                            x,
-                            y,
-                            TerminalRendererMatrixCell {
-                                display: *display,
-                                layer_of_value: layer.clone(),
-                            },
-                        );
-                    }
-                }
-            }
-        });
+        }
+    }
 
     render_matrix
 }
 
-// pub static TERMINAL_RENDERER_SYSTEM_INIT: System =
+fn produce_render_string(
+    update_query_results: &QueryResultList,
+    renderer_options: &TerminalRendererOptions,
+) -> String {
+    let render_matrix = make_render_matrix(update_query_results, &renderer_options);
 
-// pub static TERMINAL_RENDERER_SYSTEM_UPDATE: System = System::new(Query::new(), |results| {
+    let mut render_string = String::new();
 
-// });
+    let mut curr_row = 0;
+    for cell in render_matrix.iter() {
+        let (_, row) = cell.location().values();
+        let is_new_row = row != curr_row;
 
+        if is_new_row {
+            render_string += NEWLINE_DELIMITER;
+        }
+
+        render_string += &cell.data().display.to_string();
+
+        curr_row = row;
+    }
+
+    format!(
+        "{}{}{}",
+        NEWLINE_DELIMITER,
+        if renderer_options.include_screen_outline {
+            outline_render_string(render_string, &renderer_options)
+        } else {
+            render_string
+        },
+        NEWLINE_DELIMITER
+    )
+}
+
+fn outline_render_string(
+    render_string: String,
+    renderer_options: &TerminalRendererOptions,
+) -> String {
+    let make_horizontal_outline = || -> String {
+        (0..renderer_options.screen_resolution.width())
+            .map(|_| HORIZONTAL_OUTLINE_DELIMITER)
+            .collect::<Vec<&str>>()
+            .join("")
+            .to_string()
+    };
+
+    let header = format!("/{}\\", make_horizontal_outline());
+    let footer = format!("\\{}/", make_horizontal_outline());
+
+    let body = render_string
+        .split(NEWLINE_DELIMITER)
+        .map(|line| format!("{VERTICAL_OUTLINE_DELIMITER}{line}{VERTICAL_OUTLINE_DELIMITER}"))
+        .collect::<Vec<String>>()
+        .join(NEWLINE_DELIMITER);
+
+    format!("{header}{NEWLINE_DELIMITER}{body}{NEWLINE_DELIMITER}{footer}")
+}
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct TerminalRendererOptions {
     pub screen_resolution: Dimensions2d,
     pub include_screen_outline: bool,
 }
-
-// TODO: Convert to System.
-// pub struct TerminalRenderer {
-//     initial_terminal_size: (u16, u16),
-//     config: TerminalRendererOptions,
-//     prev_render: String,
-//     is_initial_render: bool,
-// }
-// impl TerminalRenderer {
-//     pub fn new(config: TerminalRendererOptions) -> Self {
-//         TerminalRenderer {
-//             initial_terminal_size: (0, 0),
-//             config,
-//             prev_render: String::new(),
-//             is_initial_render: true,
-//         }
-//     }
-
-//     fn make_render_matrix(
-//         &self,
-//         entities: &Vec<(&Entity, &BehaviourList)>,
-//     ) -> TerminalRendererMatrix {
-//         let mut render_matrix = TerminalRendererMatrix::new(self.config.screen_resolution.clone());
-
-//         entities
-//             .iter()
-//             .filter_map(|(entity, behaviours)| {
-//                 if let Some(terminal_renderable_behaviour) = behaviours
-//                     .get_behaviour::<TerminalRenderable>(get_behaviour_name!(TerminalRenderable))
-//                 {
-//                     Some((entity, terminal_renderable_behaviour))
-//                 } else {
-//                     None
-//                 }
-//             })
-//             .for_each(|(entity, terminal_renderable_behaviour)| {
-//                 let position = entity.transform().coords().rounded();
-//                 let (x, y) = (position.x() as u64, position.y() as u64);
-
-//                 let TerminalRenderable { display, layer } = terminal_renderable_behaviour;
-
-//                 if is_entity_on_screen(entity) {
-//                     if let Some(cell) = render_matrix.get(x, y) {
-//                         if layer.is_above(&cell.data().layer_of_value)
-//                             || layer.is_with(&cell.data().layer_of_value)
-//                         {
-//                             render_matrix.update_cell_at(
-//                                 x,
-//                                 y,
-//                                 TerminalRendererMatrixCell {
-//                                     display: *display,
-//                                     layer_of_value: layer.clone(),
-//                                 },
-//                             );
-//                         }
-//                     }
-//                 }
-//             });
-
-//         render_matrix
-//     }
-
-//     fn outline_render_string(&self, render_string: String) -> String {
-//         let make_horizontal_outline = || -> String {
-//             (0..self.config.screen_resolution.width())
-//                 .map(|_| HORIZONTAL_OUTLINE_DELIMITER)
-//                 .collect::<Vec<&str>>()
-//                 .join("")
-//                 .to_string()
-//         };
-
-//         let header = format!("/{}\\", make_horizontal_outline());
-//         let footer = format!("\\{}/", make_horizontal_outline());
-
-//         let body = render_string
-//             .split(NEWLINE_DELIMITER)
-//             .map(|line| format!("{VERTICAL_OUTLINE_DELIMITER}{line}{VERTICAL_OUTLINE_DELIMITER}"))
-//             .collect::<Vec<String>>()
-//             .join(NEWLINE_DELIMITER);
-
-//         format!("{header}{NEWLINE_DELIMITER}{body}{NEWLINE_DELIMITER}{footer}")
-//     }
-
-//     fn produce_render_string(&self, entities: &Vec<(&Entity, &BehaviourList)>) -> String {
-//         let render_matrix = self.make_render_matrix(&entities);
-
-//         let mut render_string = String::new();
-
-//         let mut curr_row = 0;
-//         for cell in render_matrix.iter() {
-//             let (_, row) = cell.location().values();
-//             let is_new_row = row != curr_row;
-
-//             if is_new_row {
-//                 render_string += NEWLINE_DELIMITER;
-//             }
-
-//             render_string += &cell.data().display.to_string();
-
-//             curr_row = row;
-//         }
-
-//         format!(
-//             "{}{}{}",
-//             NEWLINE_DELIMITER,
-//             if self.config.include_screen_outline {
-//                 self.outline_render_string(render_string)
-//             } else {
-//                 render_string
-//             },
-//             NEWLINE_DELIMITER
-//         )
-//     }
-// }
-
-// impl Renderer for TerminalRenderer {
-//     fn init(&mut self) {
-//         if let Ok(size) = terminal::size() {
-//             self.initial_terminal_size = size;
-//         } else {
-//             panic!("TerminalRenderer could not get the terminal's starting size.");
-//         }
-
-//         if self.config.screen_resolution.height() + TERMINAL_DIMENSIONS_PADDING as u64
-//             > u16::MAX as u64
-//             || self.config.screen_resolution.width() + TERMINAL_DIMENSIONS_PADDING as u64
-//                 > u16::MAX as u64
-//         {
-//             panic!("TerminalRenderer's screen resolution is too large. Neither the width nor height can be greater than {}", u16::MAX - TERMINAL_DIMENSIONS_PADDING);
-//         }
-
-//         if let Err(e) = execute!(
-//             stdout(),
-//             Clear(ClearType::All),
-//             SetSize(
-//                 self.config.screen_resolution.width() as u16 + TERMINAL_DIMENSIONS_PADDING,
-//                 self.config.screen_resolution.height() as u16 + TERMINAL_DIMENSIONS_PADDING
-//             ),
-//             cursor::Hide,
-//             cursor::MoveTo(0, 0),
-//         ) {
-//             panic!(
-//                 "TerminalRenderer could not do initial setup of game screen. Error: {}",
-//                 e
-//             );
-//         }
-
-//         if let Err(e) = enable_raw_mode() {
-//             panic!(
-//                 "TerminalRenderer could not set raw mode, cannot continue. Error: {}",
-//                 e
-//             );
-//         }
-//     }
-
-//     fn render(&mut self, entities: Vec<(&Entity, &BehaviourList)>) -> Result<(), Box<dyn Error>> {
-//         let new_render_string = self.produce_render_string(&entities);
-
-//         if self.is_initial_render {
-//             write!(stdout(), "{}", new_render_string)?;
-
-//             self.is_initial_render = false;
-//         } else {
-//             let new_render_lines = new_render_string
-//                 .split(NEWLINE_DELIMITER)
-//                 .collect::<Vec<&str>>();
-//             let prev_render_lines = self
-//                 .prev_render
-//                 .split(NEWLINE_DELIMITER)
-//                 .collect::<Vec<&str>>();
-
-//             for row in 0..new_render_lines.len() {
-//                 if new_render_lines[row] != prev_render_lines[row] {
-//                     execute!(stdout(), cursor::MoveTo(0, row as u16))?;
-//                     write!(stdout(), "{}", new_render_lines[row].replace("\r\n", ""))?;
-//                     execute!(stdout(), Clear(ClearType::UntilNewLine))?;
-//                 }
-//             }
-//         }
-
-//         self.prev_render = new_render_string;
-
-//         Ok(())
-//     }
-
-//     fn cleanup(&mut self) -> Result<(), Box<dyn Error>> {
-//         execute!(
-//             stdout(),
-//             SetSize(self.initial_terminal_size.0, self.initial_terminal_size.1),
-//             cursor::MoveTo(0, self.initial_terminal_size.1),
-//             cursor::Show,
-//         )?;
-
-//         disable_raw_mode()?;
-
-//         Ok(())
-//     }
-// }
 
 struct TerminalRendererMatrix {
     matrix: Matrix<TerminalRendererMatrixCell>,
@@ -334,229 +339,293 @@ impl TerminalRendererMatrixCell {
     }
 }
 
-// fn is_entity_on_screen(entity: &Entity) -> bool {
-//     entity.transform().coords().x() >= 0.0 && entity.transform().coords().y() >= 0.0
-// }
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
+    mod produce_draw_string {
+        use super::*;
 
-//     mod produce_draw_string {
-//         use super::*;
+        mod no_screen_outline {
+            use crate::{Entity, EntityManager, IntCoords2d};
 
-//         mod no_screen_outline {
-//             use crate::core::data::{Coords, Transform};
+            use super::*;
 
-//             use super::*;
+            #[test]
+            fn it_includes_all_renderable_entities() {
+                let options = TerminalRendererOptions {
+                    screen_resolution: Dimensions2d::new(3, 3),
+                    include_screen_outline: false,
+                };
 
-//             #[test]
-//             fn it_includes_all_renderable_entities() {
-//                 let renderer = TerminalRenderer::new(TerminalRendererOptions {
-//                     screen_resolution: Dimensions2d::new(3, 3),
-//                     include_screen_outline: false,
-//                 });
+                let (_, update_system, _) = TerminalRendererSystems::new(options).extract_systems();
 
-//                 let list: Vec<(Entity, BehaviourList)> = vec![
-//                     (
-//                         Entity::new("E1", Transform::default()),
-//                         BehaviourList::new(),
-//                     ),
-//                     (
-//                         Entity::new("E2", Transform::new(Coords::new(1.0, 1.0, 0.0))),
-//                         BehaviourList::from(vec![Box::new(TerminalRenderable::new(
-//                             '^',
-//                             Layer::base(),
-//                         ))]),
-//                     ),
-//                     (
-//                         Entity::new("E3", Transform::new(Coords::new(0.0, 0.0, 0.0))),
-//                         BehaviourList::from(vec![Box::new(TerminalRenderable::new(
-//                             '5',
-//                             Layer::base(),
-//                         ))]),
-//                     ),
-//                     (
-//                         Entity::new("E4", Transform::default()),
-//                         BehaviourList::new(),
-//                     ),
-//                     (
-//                         Entity::new("E5", Transform::new(Coords::new(2.0, 2.0, 0.0))),
-//                         BehaviourList::from(vec![Box::new(TerminalRenderable::new(
-//                             '@',
-//                             Layer::base(),
-//                         ))]),
-//                     ),
-//                 ];
+                let mut em = EntityManager::new();
+                em.add_entity(
+                    Entity(1),
+                    vec![Box::new(TransformTerminal {
+                        coords: IntCoords2d::new(0, 0),
+                    })],
+                );
+                em.add_entity(
+                    Entity(2),
+                    vec![
+                        Box::new(TerminalRenderer {
+                            display: '^',
+                            layer: Layer::base(),
+                        }),
+                        Box::new(TransformTerminal {
+                            coords: IntCoords2d::new(1, 1),
+                        }),
+                    ],
+                );
+                em.add_entity(
+                    Entity(3),
+                    vec![
+                        Box::new(TerminalRenderer {
+                            display: '5',
+                            layer: Layer::base(),
+                        }),
+                        Box::new(TransformTerminal {
+                            coords: IntCoords2d::new(0, 0),
+                        }),
+                    ],
+                );
+                em.add_entity(
+                    Entity(4),
+                    vec![Box::new(TransformTerminal {
+                        coords: IntCoords2d::new(0, 0),
+                    })],
+                );
+                em.add_entity(
+                    Entity(5),
+                    vec![
+                        Box::new(TerminalRenderer {
+                            display: '@',
+                            layer: Layer::base(),
+                        }),
+                        Box::new(TransformTerminal {
+                            coords: IntCoords2d::new(2, 2),
+                        }),
+                    ],
+                );
 
-//                 let result = renderer.produce_render_string(
-//                     &list
-//                         .iter()
-//                         .map(|(e, b)| (e, b))
-//                         .collect::<Vec<(&Entity, &BehaviourList)>>(),
-//                 );
+                let query_results = em.query(update_system.query());
 
-//                 assert_eq!(result, "\r\n5  \r\n ^ \r\n  @\r\n")
-//             }
+                let result = produce_render_string(&query_results, &options);
 
-//             #[test]
-//             fn values_on_higher_layer_overwrite_lower_layer_values() {
-//                 let renderer = TerminalRenderer::new(TerminalRendererOptions {
-//                     screen_resolution: Dimensions2d::new(3, 3),
-//                     include_screen_outline: false,
-//                 });
+                assert_eq!(result, "\r\n5  \r\n ^ \r\n  @\r\n")
+            }
 
-//                 let list: Vec<(Entity, BehaviourList)> = vec![
-//                     (
-//                         Entity::new("E1", Transform::default()),
-//                         BehaviourList::new(),
-//                     ),
-//                     (
-//                         Entity::new("E2", Transform::new(Coords::new(2.0, 2.0, 0.0))),
-//                         BehaviourList::from(vec![Box::new(TerminalRenderable::new(
-//                             '^',
-//                             Layer::new(1),
-//                         ))]),
-//                     ),
-//                     (
-//                         Entity::new("E3", Transform::new(Coords::new(0.0, 0.0, 0.0))),
-//                         BehaviourList::from(vec![Box::new(TerminalRenderable::new(
-//                             '5',
-//                             Layer::base(),
-//                         ))]),
-//                     ),
-//                     (
-//                         Entity::new("E4", Transform::default()),
-//                         BehaviourList::new(),
-//                     ),
-//                     (
-//                         Entity::new("E5", Transform::new(Coords::new(2.0, 2.0, 0.0))),
-//                         BehaviourList::from(vec![Box::new(TerminalRenderable::new(
-//                             '@',
-//                             Layer::base(),
-//                         ))]),
-//                     ),
-//                 ];
+            #[test]
+            fn values_on_higher_layer_overwrite_lower_layer_values() {
+                let options = TerminalRendererOptions {
+                    screen_resolution: Dimensions2d::new(3, 3),
+                    include_screen_outline: false,
+                };
 
-//                 let result = renderer.produce_render_string(
-//                     &list
-//                         .iter()
-//                         .map(|(e, b)| (e, b))
-//                         .collect::<Vec<(&Entity, &BehaviourList)>>(),
-//                 );
+                let (_, update_system, _) = TerminalRendererSystems::new(options).extract_systems();
 
-//                 assert_eq!(result, "\r\n5  \r\n   \r\n  ^\r\n")
-//             }
-//         }
+                let mut em = EntityManager::new();
+                em.add_entity(
+                    Entity(1),
+                    vec![Box::new(TransformTerminal {
+                        coords: IntCoords2d::new(0, 0),
+                    })],
+                );
+                em.add_entity(
+                    Entity(2),
+                    vec![
+                        Box::new(TerminalRenderer {
+                            display: '^',
+                            layer: Layer::new(1),
+                        }),
+                        Box::new(TransformTerminal {
+                            coords: IntCoords2d::new(2, 2),
+                        }),
+                    ],
+                );
+                em.add_entity(
+                    Entity(3),
+                    vec![
+                        Box::new(TerminalRenderer {
+                            display: '5',
+                            layer: Layer::base(),
+                        }),
+                        Box::new(TransformTerminal {
+                            coords: IntCoords2d::new(0, 0),
+                        }),
+                    ],
+                );
+                em.add_entity(
+                    Entity(4),
+                    vec![Box::new(TransformTerminal {
+                        coords: IntCoords2d::new(0, 0),
+                    })],
+                );
+                em.add_entity(
+                    Entity(5),
+                    vec![
+                        Box::new(TerminalRenderer {
+                            display: '@',
+                            layer: Layer::base(),
+                        }),
+                        Box::new(TransformTerminal {
+                            coords: IntCoords2d::new(2, 2),
+                        }),
+                    ],
+                );
 
-//         mod with_screen_outline {
-//             use crate::core::data::{Coords, Transform};
+                let query_results = em.query(update_system.query());
 
-//             use super::*;
+                let result = produce_render_string(&query_results, &options);
 
-//             #[test]
-//             fn it_includes_all_renderable_entities() {
-//                 let renderer = TerminalRenderer::new(TerminalRendererOptions {
-//                     screen_resolution: Dimensions2d::new(3, 3),
-//                     include_screen_outline: true,
-//                 });
+                assert_eq!(result, "\r\n5  \r\n   \r\n  ^\r\n")
+            }
+        }
 
-//                 let list: Vec<(Entity, BehaviourList)> = vec![
-//                     (
-//                         Entity::new("E1", Transform::default()),
-//                         BehaviourList::new(),
-//                     ),
-//                     (
-//                         Entity::new("E2", Transform::new(Coords::new(1.0, 1.0, 0.0))),
-//                         BehaviourList::from(vec![Box::new(TerminalRenderable::new(
-//                             '^',
-//                             Layer::base(),
-//                         ))]),
-//                     ),
-//                     (
-//                         Entity::new("E3", Transform::new(Coords::new(0.0, 0.0, 0.0))),
-//                         BehaviourList::from(vec![Box::new(TerminalRenderable::new(
-//                             '5',
-//                             Layer::base(),
-//                         ))]),
-//                     ),
-//                     (
-//                         Entity::new("E4", Transform::default()),
-//                         BehaviourList::new(),
-//                     ),
-//                     (
-//                         Entity::new("E5", Transform::new(Coords::new(2.0, 2.0, 0.0))),
-//                         BehaviourList::from(vec![Box::new(TerminalRenderable::new(
-//                             '@',
-//                             Layer::base(),
-//                         ))]),
-//                     ),
-//                 ];
+        mod with_screen_outline {
+            use crate::{Entity, EntityManager, IntCoords2d};
 
-//                 let result = renderer.produce_render_string(
-//                     &list
-//                         .iter()
-//                         .map(|(e, b)| (e, b))
-//                         .collect::<Vec<(&Entity, &BehaviourList)>>(),
-//                 );
+            use super::*;
 
-//                 assert_eq!(
-//                     result,
-//                     "\r\n/===\\\r\n|5  |\r\n| ^ |\r\n|  @|\r\n\\===/\r\n"
-//                 );
-//             }
+            #[test]
+            fn it_includes_all_renderable_entities() {
+                let options = TerminalRendererOptions {
+                    screen_resolution: Dimensions2d::new(3, 3),
+                    include_screen_outline: true,
+                };
 
-//             #[test]
-//             fn values_on_higher_layer_overwrite_lower_layer_values() {
-//                 let renderer = TerminalRenderer::new(TerminalRendererOptions {
-//                     screen_resolution: Dimensions2d::new(3, 3),
-//                     include_screen_outline: true,
-//                 });
+                let (_, update_system, _) = TerminalRendererSystems::new(options).extract_systems();
 
-//                 let list: Vec<(Entity, BehaviourList)> = vec![
-//                     (
-//                         Entity::new("E1", Transform::default()),
-//                         BehaviourList::new(),
-//                     ),
-//                     (
-//                         Entity::new("E2", Transform::new(Coords::new(2.0, 2.0, 0.0))),
-//                         BehaviourList::from(vec![Box::new(TerminalRenderable::new(
-//                             '^',
-//                             Layer::new(1),
-//                         ))]),
-//                     ),
-//                     (
-//                         Entity::new("E3", Transform::new(Coords::new(0.0, 0.0, 0.0))),
-//                         BehaviourList::from(vec![Box::new(TerminalRenderable::new(
-//                             '5',
-//                             Layer::base(),
-//                         ))]),
-//                     ),
-//                     (
-//                         Entity::new("E4", Transform::default()),
-//                         BehaviourList::new(),
-//                     ),
-//                     (
-//                         Entity::new("E5", Transform::new(Coords::new(2.0, 2.0, 0.0))),
-//                         BehaviourList::from(vec![Box::new(TerminalRenderable::new(
-//                             '@',
-//                             Layer::base(),
-//                         ))]),
-//                     ),
-//                 ];
+                let mut em = EntityManager::new();
+                em.add_entity(
+                    Entity(1),
+                    vec![Box::new(TransformTerminal {
+                        coords: IntCoords2d::new(0, 0),
+                    })],
+                );
+                em.add_entity(
+                    Entity(2),
+                    vec![
+                        Box::new(TerminalRenderer {
+                            display: '^',
+                            layer: Layer::base(),
+                        }),
+                        Box::new(TransformTerminal {
+                            coords: IntCoords2d::new(1, 1),
+                        }),
+                    ],
+                );
+                em.add_entity(
+                    Entity(3),
+                    vec![
+                        Box::new(TerminalRenderer {
+                            display: '5',
+                            layer: Layer::base(),
+                        }),
+                        Box::new(TransformTerminal {
+                            coords: IntCoords2d::new(0, 0),
+                        }),
+                    ],
+                );
+                em.add_entity(
+                    Entity(4),
+                    vec![Box::new(TransformTerminal {
+                        coords: IntCoords2d::new(0, 0),
+                    })],
+                );
+                em.add_entity(
+                    Entity(5),
+                    vec![
+                        Box::new(TerminalRenderer {
+                            display: '@',
+                            layer: Layer::base(),
+                        }),
+                        Box::new(TransformTerminal {
+                            coords: IntCoords2d::new(2, 2),
+                        }),
+                    ],
+                );
 
-//                 let result = renderer.produce_render_string(
-//                     &list
-//                         .iter()
-//                         .map(|(e, b)| (e, b))
-//                         .collect::<Vec<(&Entity, &BehaviourList)>>(),
-//                 );
+                let query_results = em.query(update_system.query());
 
-//                 assert_eq!(
-//                     result,
-//                     "\r\n/===\\\r\n|5  |\r\n|   |\r\n|  ^|\r\n\\===/\r\n"
-//                 );
-//             }
-//         }
-//     }
-// }
+                let result = produce_render_string(&query_results, &options);
+
+                assert_eq!(
+                    result,
+                    "\r\n/===\\\r\n|5  |\r\n| ^ |\r\n|  @|\r\n\\===/\r\n"
+                );
+            }
+
+            #[test]
+            fn values_on_higher_layer_overwrite_lower_layer_values() {
+                let options = TerminalRendererOptions {
+                    screen_resolution: Dimensions2d::new(3, 3),
+                    include_screen_outline: true,
+                };
+
+                let (_, update_system, _) = TerminalRendererSystems::new(options).extract_systems();
+
+                let mut em = EntityManager::new();
+                em.add_entity(
+                    Entity(1),
+                    vec![Box::new(TransformTerminal {
+                        coords: IntCoords2d::new(0, 0),
+                    })],
+                );
+                em.add_entity(
+                    Entity(2),
+                    vec![
+                        Box::new(TerminalRenderer {
+                            display: '^',
+                            layer: Layer::new(1),
+                        }),
+                        Box::new(TransformTerminal {
+                            coords: IntCoords2d::new(2, 2),
+                        }),
+                    ],
+                );
+                em.add_entity(
+                    Entity(3),
+                    vec![
+                        Box::new(TerminalRenderer {
+                            display: '5',
+                            layer: Layer::base(),
+                        }),
+                        Box::new(TransformTerminal {
+                            coords: IntCoords2d::new(0, 0),
+                        }),
+                    ],
+                );
+                em.add_entity(
+                    Entity(4),
+                    vec![Box::new(TransformTerminal {
+                        coords: IntCoords2d::new(0, 0),
+                    })],
+                );
+                em.add_entity(
+                    Entity(5),
+                    vec![
+                        Box::new(TerminalRenderer {
+                            display: '@',
+                            layer: Layer::base(),
+                        }),
+                        Box::new(TransformTerminal {
+                            coords: IntCoords2d::new(2, 2),
+                        }),
+                    ],
+                );
+
+                let query_results = em.query(update_system.query());
+
+                let result = produce_render_string(&query_results, &options);
+
+                assert_eq!(
+                    result,
+                    "\r\n/===\\\r\n|5  |\r\n|   |\r\n|  ^|\r\n\\===/\r\n"
+                );
+            }
+        }
+    }
+}

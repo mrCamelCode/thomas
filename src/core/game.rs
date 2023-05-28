@@ -1,10 +1,13 @@
 use std::collections::HashMap;
 
-use crate::{EntityManager, OperatorFn, Query, System, TerminalRendererOptions};
+use crate::{
+    Entity, EntityManager, System, TerminalRendererOptions, TerminalRendererState,
+    TerminalRendererSystems,
+};
 
 const EVENT_INIT: &str = "init";
 const EVENT_UPDATE: &str = "update";
-const EVENT_RENDER: &str = "render";
+const EVENT_CLEANUP: &str = "cleanup";
 
 #[derive(PartialEq, Eq)]
 pub enum Renderer {
@@ -23,7 +26,7 @@ impl Game {
             events_to_systems: HashMap::from([
                 (EVENT_INIT, vec![]),
                 (EVENT_UPDATE, vec![]),
-                (EVENT_RENDER, vec![]),
+                (EVENT_CLEANUP, vec![]),
             ]),
             is_playing: false,
         }
@@ -35,6 +38,10 @@ impl Game {
 
     pub fn add_update_system(self, system: System) -> Self {
         self.add_system(EVENT_UPDATE, system)
+    }
+
+    pub fn add_cleanup_system(self, system: System) -> Self {
+        self.add_system(EVENT_CLEANUP, system)
     }
 
     pub fn add_system(mut self, event_name: &'static str, system: System) -> Self {
@@ -58,8 +65,9 @@ impl Game {
 
         while self.is_playing {
             self.trigger_event(EVENT_UPDATE);
-            self.trigger_event(EVENT_RENDER);
         }
+
+        self.trigger_event(EVENT_CLEANUP);
     }
 
     fn trigger_event(&self, event_name: &'static str) {
@@ -72,12 +80,22 @@ impl Game {
         }
     }
 
-    fn setup_renderer(self, renderer: Renderer) -> Self {
+    fn setup_renderer(mut self, renderer: Renderer) -> Self {
         match renderer {
             Renderer::Terminal(options) => {
-                return self.add_system(EVENT_RENDER, System::new(Query::new(), |qr| {}));
+                self.entity_manager.add_entity(
+                    Entity::new(),
+                    vec![Box::new(TerminalRendererState::new(options))],
+                );
+
+                let (init_system, update_system, cleanup_system) =
+                    TerminalRendererSystems::new(options).extract_systems();
+
+                return self
+                    .add_init_system(init_system)
+                    .add_update_system(update_system)
+                    .add_cleanup_system(cleanup_system);
             }
-            _ => self,
         }
     }
 }

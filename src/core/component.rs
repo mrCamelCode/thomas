@@ -7,10 +7,10 @@ pub trait Component {
     fn is_component_type(comp: &dyn Component) -> bool
     where
         Self: Sized;
-    fn coerce(comp: &dyn Component) -> Option<&Self>
+    fn cast(comp: &dyn Component) -> Option<&Self>
     where
         Self: Sized;
-    fn coerce_mut(comp: &mut dyn Component) -> Option<&mut Self>
+    fn cast_mut(comp: &mut dyn Component) -> Option<&mut Self>
     where
         Self: Sized;
 

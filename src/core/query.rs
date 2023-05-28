@@ -167,6 +167,10 @@ impl QueryResultList {
         }
     }
 
+    pub fn matches(&self) -> &Vec<QueryResult> {
+        &self.matches
+    }
+
     pub fn inclusions(&self) -> &Vec<QueryResult> {
         &self.inclusions
     }
