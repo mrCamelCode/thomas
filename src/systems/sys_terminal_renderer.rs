@@ -10,8 +10,8 @@ use crossterm::{
 };
 
 use crate::{
-    Component, Dimensions2d, Layer, Matrix, Query, QueryResultList, System, TerminalRenderer,
-    TransformTerminal,
+    Component, Dimensions2d, Layer, Matrix, Priority, Query, QueryResultList, System,
+    TerminalRenderer, TransformTerminal,
 };
 
 const HORIZONTAL_OUTLINE_DELIMITER: &str = "=";
@@ -46,7 +46,8 @@ pub(crate) struct TerminalRendererSystems {
 impl TerminalRendererSystems {
     pub(crate) fn new(options: TerminalRendererOptions) -> Self {
         Self {
-            init_system: System::new(
+            init_system: System::new_with_priority(
+                Priority::highest(),
                 Query::new().include::<TerminalRendererState>(),
                 move |results, _| {
                     assert!(
@@ -107,7 +108,8 @@ impl TerminalRendererSystems {
                     }
                 },
             ),
-            update_system: System::new(
+            update_system: System::new_with_priority(
+                Priority::lowest(),
                 Query::new()
                     .has::<TerminalRenderer>()
                     .has_where::<TransformTerminal>(move |transform_terminal| {

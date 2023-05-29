@@ -77,6 +77,8 @@ impl Game {
         self = self.setup_renderer(renderer);
         self = self.setup_builtin_systems();
 
+        self.sort_systems_by_priority();
+
         self.is_playing = true;
 
         self.trigger_event(EVENT_INIT, &self.make_extra_args(&commands, vec![]));
@@ -114,6 +116,12 @@ impl Game {
     fn update_services(&mut self) {
         self.time.borrow_mut().update();
         self.input.borrow_mut().update();
+    }
+
+    fn sort_systems_by_priority(&mut self) {
+        for (_, system_list) in &mut self.events_to_systems {
+            system_list.sort_by(|a, b| a.priority().cmp(&b.priority()))
+        }
     }
 
     fn trigger_event(&self, event_name: &'static str, extra_args: &SystemExtraArgs) {
@@ -241,5 +249,222 @@ impl<'a> IntoIterator for &'a GameCommandQueue {
 
     fn into_iter(self) -> Self::IntoIter {
         (&self.queue).into_iter()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod test_sort_systems_by_priority {
+        use crate::Priority;
+
+        use super::*;
+
+        #[test]
+        fn should_sort_by_priority_with_lower_numbers_at_the_front() {
+            const EVENT_CUSTOM: &str = "custom";
+
+            let mut game = Game::new(GameOptions {
+                press_escape_to_quit: false,
+                max_frame_rate: 5,
+            })
+            .add_init_system(System::new_with_priority(
+                Priority::new(5),
+                Query::new(),
+                |_, _| {},
+            ))
+            .add_init_system(System::new_with_priority(
+                Priority::new(1),
+                Query::new(),
+                |_, _| {},
+            ))
+            .add_init_system(System::new_with_priority(
+                Priority::new(3),
+                Query::new(),
+                |_, _| {},
+            ))
+            .add_system(
+                EVENT_CUSTOM,
+                System::new_with_priority(Priority::new(50), Query::new(), |_, _| {}),
+            )
+            .add_system(
+                EVENT_CUSTOM,
+                System::new_with_priority(Priority::new(10), Query::new(), |_, _| {}),
+            )
+            .add_system(
+                EVENT_CUSTOM,
+                System::new_with_priority(Priority::new(30), Query::new(), |_, _| {}),
+            );
+
+            game.sort_systems_by_priority();
+
+            let init_systems = game.events_to_systems.get(EVENT_INIT).unwrap();
+            let custom_systems = game.events_to_systems.get(EVENT_CUSTOM).unwrap();
+
+            assert_eq!(**init_systems[0].priority(), 1);
+            assert_eq!(**init_systems[1].priority(), 3);
+            assert_eq!(**init_systems[2].priority(), 5);
+
+            assert_eq!(**custom_systems[0].priority(), 10);
+            assert_eq!(**custom_systems[1].priority(), 30);
+            assert_eq!(**custom_systems[2].priority(), 50);
+        }
+    }
+
+    mod test_add_system {
+        use super::*;
+
+        #[test]
+        fn can_add_to_builtin_events() {
+            let game = Game::new(GameOptions {
+                press_escape_to_quit: false,
+                max_frame_rate: 5,
+            })
+            .add_init_system(System::new(Query::new(), |_, _| {}))
+            .add_update_system(System::new(Query::new(), |_, _| {}))
+            .add_cleanup_system(System::new(Query::new(), |_, _| {}));
+
+            assert_eq!(game.events_to_systems.get(EVENT_INIT).unwrap().len(), 1);
+            assert_eq!(game.events_to_systems.get(EVENT_UPDATE).unwrap().len(), 1);
+            assert_eq!(game.events_to_systems.get(EVENT_CLEANUP).unwrap().len(), 1);
+        }
+
+        #[test]
+        fn can_add_to_custom_event() {
+            let game = Game::new(GameOptions {
+                press_escape_to_quit: false,
+                max_frame_rate: 5,
+            })
+            .add_system("my key", System::new(Query::new(), |_, _| {}));
+
+            assert_eq!(game.events_to_systems.get("my key").unwrap().len(), 1);
+        }
+    }
+
+    mod test_trigger_event {
+        use std::sync::atomic::{AtomicU8, Ordering};
+
+        use super::*;
+
+        const EVENT_1: &str = "1";
+
+        #[test]
+        fn triggering_event_calls_all_systems() {
+            static COUNTER_1: AtomicU8 = AtomicU8::new(0);
+            static COUNTER_2: AtomicU8 = AtomicU8::new(0);
+
+            let game = Game::new(GameOptions {
+                press_escape_to_quit: false,
+                max_frame_rate: 5,
+            })
+            .add_system(
+                EVENT_1,
+                System::new(Query::new(), |_, _| {
+                    COUNTER_1.fetch_add(2, Ordering::Relaxed);
+                }),
+            )
+            .add_system(
+                EVENT_1,
+                System::new(Query::new(), |_, _| {
+                    COUNTER_2.fetch_add(5, Ordering::Relaxed);
+                }),
+            );
+
+            game.trigger_event(
+                EVENT_1,
+                &game.make_extra_args(&Rc::new(RefCell::new(GameCommandQueue::new())), vec![]),
+            );
+
+            assert_eq!(COUNTER_1.fetch_add(0, Ordering::Relaxed), 2);
+            assert_eq!(COUNTER_2.fetch_add(0, Ordering::Relaxed), 5);
+        }
+
+        #[test]
+        fn systems_have_access_to_builtin_extra_args() {
+            let game = Game::new(GameOptions {
+                press_escape_to_quit: false,
+                max_frame_rate: 5,
+            })
+            .add_system(
+                EVENT_1,
+                System::new(Query::new(), |_, args| {
+                    // These will panic if any fail.
+                    args.commands();
+                    args.input();
+                    args.time();
+                }),
+            );
+
+            game.trigger_event(
+                EVENT_1,
+                &game.make_extra_args(&Rc::new(RefCell::new(GameCommandQueue::new())), vec![]),
+            );
+        }
+
+        #[test]
+        fn systems_have_access_to_custom_extra_args() {
+            let game = Game::new(GameOptions {
+                press_escape_to_quit: false,
+                max_frame_rate: 5,
+            })
+            .add_system(
+                EVENT_1,
+                System::new(Query::new(), |_, args| {
+                    let custom = args.try_get::<i32>("custom");
+
+                    assert!(custom.is_some());
+                    assert_eq!(*custom.unwrap(), 10);
+                }),
+            );
+
+            game.trigger_event(
+                EVENT_1,
+                &game.make_extra_args(
+                    &Rc::new(RefCell::new(GameCommandQueue::new())),
+                    vec![("custom", Box::new(10))],
+                ),
+            );
+        }
+    }
+
+    mod test_process_command_queue {
+        use super::*;
+
+        #[test]
+        fn quit() {
+            let mut game = Game::new(GameOptions {
+                press_escape_to_quit: false,
+                max_frame_rate: 5,
+            });
+            game.is_playing = true;
+
+            assert_eq!(game.is_playing, true);
+
+            let commands = Rc::new(RefCell::new(GameCommandQueue::new()));
+            commands.borrow_mut().issue(GameCommand::Quit);
+
+            game.process_command_queue(Rc::clone(&commands));
+
+            assert_eq!(game.is_playing, false);
+        }
+    
+        #[test]
+        fn queue_is_empty_after_processing() {
+            let mut game = Game::new(GameOptions {
+                press_escape_to_quit: false,
+                max_frame_rate: 5,
+            });
+
+            let commands = Rc::new(RefCell::new(GameCommandQueue::new()));
+            commands.borrow_mut().issue(GameCommand::Quit);
+
+            assert_eq!(commands.borrow().queue.len(), 1);
+
+            game.process_command_queue(Rc::clone(&commands));
+
+            assert_eq!(commands.borrow().queue.len(), 0);
+
+        }
     }
 }

@@ -5,12 +5,13 @@ use std::{
     rc::Rc,
 };
 
-use crate::{GameCommandQueue, Input, Query, QueryResultList, Time};
+use crate::{GameCommandQueue, Input, Query, QueryResultList, Time, Priority};
 
 pub type OperatorFn = dyn Fn(QueryResultList, &SystemExtraArgs) -> ();
 pub struct System {
     query: Query,
     operator: Box<OperatorFn>,
+    priority: Priority,
 }
 impl System {
     pub fn new(
@@ -20,6 +21,19 @@ impl System {
         Self {
             query,
             operator: Box::new(operator),
+            priority: Priority::default(),
+        }
+    }
+
+    pub fn new_with_priority(
+        priority: Priority,
+        query: Query,
+        operator: impl Fn(QueryResultList, &SystemExtraArgs) -> () + 'static,
+    ) -> Self {
+        Self {
+            query,
+            operator: Box::new(operator),
+            priority
         }
     }
 
@@ -27,8 +41,12 @@ impl System {
         &self.query
     }
 
-    pub fn operator(&self) -> &OperatorFn {
+    pub(crate) fn operator(&self) -> &OperatorFn {
         &self.operator
+    }
+
+    pub(crate) fn priority(&self) -> &Priority {
+        &self.priority
     }
 }
 
