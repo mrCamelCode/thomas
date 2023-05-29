@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use crate::{Component, Entity, StoredComponent, StoredComponentList};
+use crate::{Component, Entity, StoredComponentList};
 
 pub type WherePredicate = dyn Fn(&dyn Component) -> bool + 'static;
 
@@ -108,15 +108,7 @@ impl Query {
     pub(super) fn allowed_components(&self) -> &Vec<ComponentQueryData> {
         &self.allowed_components
     }
-
-    pub(super) fn forbidden_components(&self) -> &Vec<ComponentQueryData> {
-        &self.forbidden_components
-    }
-
-    pub(super) fn included_components(&self) -> &Vec<ComponentQueryData> {
-        &self.included_components
-    }
-
+    
     pub(super) fn allowed_component_names(&self) -> Vec<&'static str> {
         self.allowed_components
             .iter()

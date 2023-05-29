@@ -11,7 +11,7 @@ use crossterm::{
 
 use crate::{
     Component, Dimensions2d, Layer, Matrix, Priority, Query, QueryResultList, System,
-    TerminalRenderer, TransformTerminal,
+    TerminalRenderer, TerminalTransform,
 };
 
 const HORIZONTAL_OUTLINE_DELIMITER: &str = "=";
@@ -112,7 +112,7 @@ impl TerminalRendererSystems {
                 Priority::lowest(),
                 Query::new()
                     .has::<TerminalRenderer>()
-                    .has_where::<TransformTerminal>(move |transform_terminal| {
+                    .has_where::<TerminalTransform>(move |transform_terminal| {
                         let (x, y) = transform_terminal.coords.values();
 
                         (x >= 0 && x as u64 <= options.screen_resolution.width())
@@ -218,7 +218,7 @@ fn make_render_matrix(
     for result in update_query_results {
         let (TerminalRenderer { display, layer }, coords) = (
             &*result.components().get::<TerminalRenderer>(),
-            result.components().get::<TransformTerminal>().coords,
+            result.components().get::<TerminalTransform>().coords,
         );
 
         let (x, y) = (coords.x() as u64, coords.y() as u64);
@@ -365,7 +365,7 @@ mod tests {
                 let mut em = EntityManager::new();
                 em.add_entity(
                     Entity(1),
-                    vec![Box::new(TransformTerminal {
+                    vec![Box::new(TerminalTransform {
                         coords: IntCoords2d::new(0, 0),
                     })],
                 );
@@ -376,7 +376,7 @@ mod tests {
                             display: '^',
                             layer: Layer::base(),
                         }),
-                        Box::new(TransformTerminal {
+                        Box::new(TerminalTransform {
                             coords: IntCoords2d::new(1, 1),
                         }),
                     ],
@@ -388,14 +388,14 @@ mod tests {
                             display: '5',
                             layer: Layer::base(),
                         }),
-                        Box::new(TransformTerminal {
+                        Box::new(TerminalTransform {
                             coords: IntCoords2d::new(0, 0),
                         }),
                     ],
                 );
                 em.add_entity(
                     Entity(4),
-                    vec![Box::new(TransformTerminal {
+                    vec![Box::new(TerminalTransform {
                         coords: IntCoords2d::new(0, 0),
                     })],
                 );
@@ -406,7 +406,7 @@ mod tests {
                             display: '@',
                             layer: Layer::base(),
                         }),
-                        Box::new(TransformTerminal {
+                        Box::new(TerminalTransform {
                             coords: IntCoords2d::new(2, 2),
                         }),
                     ],
@@ -431,7 +431,7 @@ mod tests {
                 let mut em = EntityManager::new();
                 em.add_entity(
                     Entity(1),
-                    vec![Box::new(TransformTerminal {
+                    vec![Box::new(TerminalTransform {
                         coords: IntCoords2d::new(0, 0),
                     })],
                 );
@@ -442,7 +442,7 @@ mod tests {
                             display: '^',
                             layer: Layer::new(1),
                         }),
-                        Box::new(TransformTerminal {
+                        Box::new(TerminalTransform {
                             coords: IntCoords2d::new(2, 2),
                         }),
                     ],
@@ -454,14 +454,14 @@ mod tests {
                             display: '5',
                             layer: Layer::base(),
                         }),
-                        Box::new(TransformTerminal {
+                        Box::new(TerminalTransform {
                             coords: IntCoords2d::new(0, 0),
                         }),
                     ],
                 );
                 em.add_entity(
                     Entity(4),
-                    vec![Box::new(TransformTerminal {
+                    vec![Box::new(TerminalTransform {
                         coords: IntCoords2d::new(0, 0),
                     })],
                 );
@@ -472,7 +472,7 @@ mod tests {
                             display: '@',
                             layer: Layer::base(),
                         }),
-                        Box::new(TransformTerminal {
+                        Box::new(TerminalTransform {
                             coords: IntCoords2d::new(2, 2),
                         }),
                     ],
@@ -503,7 +503,7 @@ mod tests {
                 let mut em = EntityManager::new();
                 em.add_entity(
                     Entity(1),
-                    vec![Box::new(TransformTerminal {
+                    vec![Box::new(TerminalTransform {
                         coords: IntCoords2d::new(0, 0),
                     })],
                 );
@@ -514,7 +514,7 @@ mod tests {
                             display: '^',
                             layer: Layer::base(),
                         }),
-                        Box::new(TransformTerminal {
+                        Box::new(TerminalTransform {
                             coords: IntCoords2d::new(1, 1),
                         }),
                     ],
@@ -526,14 +526,14 @@ mod tests {
                             display: '5',
                             layer: Layer::base(),
                         }),
-                        Box::new(TransformTerminal {
+                        Box::new(TerminalTransform {
                             coords: IntCoords2d::new(0, 0),
                         }),
                     ],
                 );
                 em.add_entity(
                     Entity(4),
-                    vec![Box::new(TransformTerminal {
+                    vec![Box::new(TerminalTransform {
                         coords: IntCoords2d::new(0, 0),
                     })],
                 );
@@ -544,7 +544,7 @@ mod tests {
                             display: '@',
                             layer: Layer::base(),
                         }),
-                        Box::new(TransformTerminal {
+                        Box::new(TerminalTransform {
                             coords: IntCoords2d::new(2, 2),
                         }),
                     ],
@@ -572,7 +572,7 @@ mod tests {
                 let mut em = EntityManager::new();
                 em.add_entity(
                     Entity(1),
-                    vec![Box::new(TransformTerminal {
+                    vec![Box::new(TerminalTransform {
                         coords: IntCoords2d::new(0, 0),
                     })],
                 );
@@ -583,7 +583,7 @@ mod tests {
                             display: '^',
                             layer: Layer::new(1),
                         }),
-                        Box::new(TransformTerminal {
+                        Box::new(TerminalTransform {
                             coords: IntCoords2d::new(2, 2),
                         }),
                     ],
@@ -595,14 +595,14 @@ mod tests {
                             display: '5',
                             layer: Layer::base(),
                         }),
-                        Box::new(TransformTerminal {
+                        Box::new(TerminalTransform {
                             coords: IntCoords2d::new(0, 0),
                         }),
                     ],
                 );
                 em.add_entity(
                     Entity(4),
-                    vec![Box::new(TransformTerminal {
+                    vec![Box::new(TerminalTransform {
                         coords: IntCoords2d::new(0, 0),
                     })],
                 );
@@ -613,7 +613,7 @@ mod tests {
                             display: '@',
                             layer: Layer::base(),
                         }),
-                        Box::new(TransformTerminal {
+                        Box::new(TerminalTransform {
                             coords: IntCoords2d::new(2, 2),
                         }),
                     ],

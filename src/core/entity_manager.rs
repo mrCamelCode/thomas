@@ -300,21 +300,8 @@ impl EntityManager {
     fn get_component_on_entity(
         entities_to_components: &EntitiesToComponents,
         entity: &Entity,
-        // component_query_data: &ComponentQueryData,
         component_name: &'static str,
     ) -> Option<StoredComponent> {
-        // if let Some(stored_components) = entities_to_components.get(entity) {
-        //     if let Some(stored_component) =
-        //         stored_components.get(component_query_data.component_name())
-        //     {
-        //         if let Some(where_predicate) = component_query_data.where_predicate() {
-        //             if where_predicate(&**stored_component.borrow()) {
-        //                 return Some(Rc::clone(stored_component));
-        //             }
-        //         }
-        //     }
-        // }
-
         if let Some(stored_components) = entities_to_components.get(entity) {
             if let Some(stored_component) = stored_components.get(component_name) {
                 return Some(Rc::clone(stored_component));
@@ -327,7 +314,6 @@ impl EntityManager {
     fn get_components_on_entity(
         entities_to_components: &EntitiesToComponents,
         entity: &Entity,
-        // component_query_data_list: &Vec<ComponentQueryData>,
         component_names: &Vec<&'static str>,
     ) -> StoredComponentList {
         StoredComponentList::new(
@@ -338,20 +324,6 @@ impl EntityManager {
                 })
                 .collect(),
         )
-    }
-
-    fn get_all_components_on_entity(
-        entities_to_components: &EntitiesToComponents,
-        entity: &Entity,
-    ) -> Vec<StoredComponent> {
-        if let Some(component_map) = entities_to_components.get(entity) {
-            return component_map
-                .values()
-                .map(|stored_component| Rc::clone(stored_component))
-                .collect();
-        }
-
-        vec![]
     }
 }
 
@@ -1230,8 +1202,6 @@ mod tests {
         }
 
         mod inclusions {
-            use crate::core::query;
-
             use super::*;
 
             #[derive(Component)]
@@ -1789,82 +1759,6 @@ mod tests {
             assert_eq!(test_component.prop1, 10);
             assert_eq!(another_test_component.prop1, 200);
             assert!(empty_component_option.is_some());
-        }
-    }
-
-    mod test_get_all_components_on_entity {
-        use super::*;
-
-        #[test]
-        fn is_empty_for_non_existent_entity() {
-            let em = EntityManager::new();
-
-            let result =
-                EntityManager::get_all_components_on_entity(&em.entities_to_components, &Entity(0));
-
-            assert!(result.is_empty());
-        }
-
-        #[test]
-        fn works_for_entities_with_no_components() {
-            let mut em = EntityManager::new();
-
-            em.add_entity(Entity(0), vec![]);
-
-            let result =
-                EntityManager::get_all_components_on_entity(&em.entities_to_components, &Entity(0));
-
-            assert!(result.is_empty());
-        }
-
-        #[test]
-        fn works_for_entity_with_one_component() {
-            let mut em = EntityManager::new();
-
-            em.add_entity(Entity(0), vec![Box::new(EmptyComponent {})]);
-
-            let result =
-                EntityManager::get_all_components_on_entity(&em.entities_to_components, &Entity(0));
-
-            assert_eq!(result.len(), 1);
-
-            EmptyComponent::cast(result[0].borrow().as_ref())
-                .expect("The one component is an EmptyComponent");
-        }
-
-        #[test]
-        fn works_for_entity_with_multiple_components() {
-            let mut em = EntityManager::new();
-
-            em.add_entity(
-                Entity(0),
-                vec![
-                    Box::new(EmptyComponent {}),
-                    Box::new(TestComponent { prop1: 10 }),
-                ],
-            );
-
-            let result =
-                EntityManager::get_all_components_on_entity(&em.entities_to_components, &Entity(0));
-
-            assert_eq!(result.len(), 2);
-            assert_eq!(
-                TestComponent::cast(
-                    result
-                        .iter()
-                        .find(|comp| comp.borrow().component_name() == TestComponent::name())
-                        .expect("It can find the TestComponent in the results")
-                        .borrow()
-                        .as_ref()
-                )
-                .unwrap()
-                .prop1,
-                10
-            );
-            assert!(result
-                .iter()
-                .find(|comp| comp.borrow().component_name() == EmptyComponent::name())
-                .is_some())
         }
     }
 

@@ -10,8 +10,8 @@ pub use comp_transform::*;
 mod comp_transform2d;
 pub use comp_transform2d::*;
 
-mod comp_transform_terminal;
-pub use comp_transform_terminal::*;
+mod comp_terminal_transform;
+pub use comp_terminal_transform::*;
 
 mod comp_identity;
 pub use comp_identity::*;
