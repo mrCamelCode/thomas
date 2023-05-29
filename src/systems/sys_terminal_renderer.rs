@@ -128,7 +128,7 @@ impl TerminalRendererSystems {
                         .components()
                         .get_mut::<TerminalRendererState>();
 
-                    let new_render_string = produce_render_string(&results, &state.options);
+                    let new_render_string = make_render_string(&results, &state.options);
 
                     if state.is_initial_render {
                         if let Err(e) = write!(stdout(), "{}", new_render_string) {
@@ -240,7 +240,7 @@ fn make_render_matrix(
     render_matrix
 }
 
-fn produce_render_string(
+fn make_render_string(
     update_query_results: &QueryResultList,
     renderer_options: &TerminalRendererOptions,
 ) -> String {
@@ -343,7 +343,7 @@ impl TerminalRendererMatrixCell {
 mod tests {
     use super::*;
 
-    mod produce_draw_string {
+    mod test_make_draw_string {
         use super::*;
 
         mod no_screen_outline {
@@ -412,7 +412,7 @@ mod tests {
 
                 let query_results = em.query(update_system.query());
 
-                let result = produce_render_string(&query_results, &options);
+                let result = make_render_string(&query_results, &options);
 
                 assert_eq!(result, "\r\n5  \r\n ^ \r\n  @\r\n")
             }
@@ -478,7 +478,7 @@ mod tests {
 
                 let query_results = em.query(update_system.query());
 
-                let result = produce_render_string(&query_results, &options);
+                let result = make_render_string(&query_results, &options);
 
                 assert_eq!(result, "\r\n5  \r\n   \r\n  ^\r\n")
             }
@@ -550,7 +550,7 @@ mod tests {
 
                 let query_results = em.query(update_system.query());
 
-                let result = produce_render_string(&query_results, &options);
+                let result = make_render_string(&query_results, &options);
 
                 assert_eq!(
                     result,
@@ -619,7 +619,7 @@ mod tests {
 
                 let query_results = em.query(update_system.query());
 
-                let result = produce_render_string(&query_results, &options);
+                let result = make_render_string(&query_results, &options);
 
                 assert_eq!(
                     result,
