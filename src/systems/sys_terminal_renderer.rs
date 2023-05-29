@@ -49,7 +49,7 @@ impl TerminalRendererSystems {
         Self {
             init_system: System::new(
                 Query::new().include::<TerminalRendererState>(),
-                move |results| {
+                move |results, _| {
                     assert!(
                         results.len() == 1,
                         "There can only be one {} in the game at a time.",
@@ -117,7 +117,7 @@ impl TerminalRendererSystems {
                             && (y >= 0 && y as u64 <= options.screen_resolution.height())
                     })
                     .include::<TerminalRendererState>(),
-                move |results| {
+                move |results, _| {
                     let mut state = results
                         .inclusions()
                         .get(0)
@@ -171,7 +171,7 @@ impl TerminalRendererSystems {
             ),
             cleanup_system: System::new(
                 Query::new().include::<TerminalRendererState>(),
-                |results| {
+                |results, _| {
                     let state = results
                         .inclusions()
                         .get(0)

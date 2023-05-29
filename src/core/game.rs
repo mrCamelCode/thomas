@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
-    Entity, EntityManager, System, TerminalRendererOptions, TerminalRendererState,
-    TerminalRendererSystems,
+    CustomExtraArgs, Entity, EntityManager, Input, System, SystemExtraArgs,
+    TerminalRendererOptions, TerminalRendererState, TerminalRendererSystems, Time,
 };
 
 const EVENT_INIT: &str = "init";
@@ -18,6 +18,8 @@ pub struct Game {
     entity_manager: EntityManager,
     events_to_systems: HashMap<&'static str, Vec<System>>,
     is_playing: bool,
+    time: Rc<RefCell<Time>>,
+    input: Rc<RefCell<Input>>,
 }
 impl Game {
     pub fn new() -> Self {
@@ -29,6 +31,8 @@ impl Game {
                 (EVENT_CLEANUP, vec![]),
             ]),
             is_playing: false,
+            time: Rc::new(RefCell::new(Time::new())),
+            input: Rc::new(RefCell::new(Input::new())),
         }
     }
 
@@ -57,25 +61,36 @@ impl Game {
     }
 
     pub fn start(mut self, renderer: Renderer) {
+        let commands = Rc::new(RefCell::new(GameCommandQueue::new()));
+
         self = self.setup_renderer(renderer);
 
         self.is_playing = true;
 
-        self.trigger_event(EVENT_INIT);
+        self.trigger_event(EVENT_INIT, &self.make_extra_args(&commands, vec![]));
 
         while self.is_playing {
-            self.trigger_event(EVENT_UPDATE);
+            self.update_services();
+
+            self.trigger_event(EVENT_UPDATE, &self.make_extra_args(&commands, vec![]));
+
+            self.process_command_queue(&mut commands.borrow_mut());
         }
 
-        self.trigger_event(EVENT_CLEANUP);
+        self.trigger_event(EVENT_CLEANUP, &self.make_extra_args(&commands, vec![]));
     }
 
-    fn trigger_event(&self, event_name: &'static str) {
+    fn update_services(&mut self) {
+        self.time.borrow_mut().update();
+        self.input.borrow_mut().update();
+    }
+
+    fn trigger_event(&self, event_name: &'static str, extra_args: &SystemExtraArgs) {
         if let Some(system_list) = self.events_to_systems.get(event_name) {
             for system in system_list {
                 let query_results = self.entity_manager.query(system.query());
 
-                system.operator()(query_results);
+                system.operator()(query_results, extra_args);
             }
         }
     }
@@ -98,25 +113,28 @@ impl Game {
             }
         }
     }
-}
 
-pub struct GameCommandQueue {
-    queue: Vec<GameCommand>,
-}
-impl GameCommandQueue {
-    pub(crate) fn new() -> Self {
-        Self { queue: vec![] }
+    fn process_command_queue(&mut self, commands: &mut GameCommandQueue) {
+        for command in &commands.queue {}
+
+        commands.queue.clear();
     }
 
-    pub fn issue(&mut self, command: GameCommand) {
-        self.queue.push(command);
-    }
-
-    pub(crate) fn consume(self) -> impl Iterator<Item = GameCommand> {
-        self.queue.into_iter()
+    fn make_extra_args(
+        &self,
+        commands: &Rc<RefCell<GameCommandQueue>>,
+        custom_pairs: CustomExtraArgs,
+    ) -> SystemExtraArgs {
+        SystemExtraArgs::new(
+            Rc::clone(commands),
+            Rc::clone(&self.input),
+            Rc::clone(&self.time),
+            custom_pairs,
+        )
     }
 }
 
+#[derive(PartialEq, Eq, Debug)]
 pub enum GameCommand {
     //     Quit,
     //     ClearEntities,
@@ -132,39 +150,31 @@ pub enum GameCommand {
     Quit,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+pub struct GameCommandQueue {
+    queue: Vec<GameCommand>,
+}
+impl GameCommandQueue {
+    pub(crate) fn new() -> Self {
+        Self { queue: vec![] }
+    }
 
-    mod game_command_queue {
-        use super::*;
+    pub fn issue(&mut self, command: GameCommand) {
+        self.queue.push(command);
+    }
+}
+impl IntoIterator for GameCommandQueue {
+    type Item = GameCommand;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
 
-        // #[test]
-        // fn goes_through_commands_in_the_order_they_were_issued() {
-        //     let mut queue = GameCommandQueue::new();
+    fn into_iter(self) -> Self::IntoIter {
+        self.queue.into_iter()
+    }
+}
+impl<'a> IntoIterator for &'a GameCommandQueue {
+    type Item = <std::slice::Iter<'a, GameCommand> as Iterator>::Item;
+    type IntoIter = std::slice::Iter<'a, GameCommand>;
 
-        //     queue.issue(GameCommand::Quit);
-        //     queue.issue(GameCommand::ClearEntities);
-        //     queue.issue(GameCommand::AddEntity {
-        //         entity: Entity::new("test", Transform::default()),
-        //         behaviours: BehaviourList::new(),
-        //     });
-
-        //     let mut iter = queue.consume();
-
-        //     assert!(match iter.next().unwrap() {
-        //         GameCommand::Quit => true,
-        //         _ => false,
-        //     });
-        //     assert!(match iter.next().unwrap() {
-        //         GameCommand::ClearEntities => true,
-        //         _ => false,
-        //     });
-        //     assert!(match iter.next().unwrap() {
-        //         GameCommand::AddEntity { .. } => true,
-        //         _ => false,
-        //     });
-        //     assert!(iter.next().is_none());
-        // }
+    fn into_iter(self) -> Self::IntoIter {
+        (&self.queue).into_iter()
     }
 }
