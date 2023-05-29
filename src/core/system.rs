@@ -160,7 +160,12 @@ mod tests {
                 commands.issue(GameCommand::Quit);
 
                 for command in &*commands {
-                    assert_eq!(*command, GameCommand::Quit);
+                    match command {
+                        GameCommand::Quit => {
+                            assert!(true);
+                        }
+                        _ => panic!("Command was not GameCommand::Quit"),
+                    }
                 }
             }
 

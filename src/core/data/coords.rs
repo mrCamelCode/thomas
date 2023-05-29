@@ -29,7 +29,7 @@ impl IntCoords2d {
     pub fn down() -> Self {
         Self::new(0, -1)
     }
-    
+
     pub fn distance_from(&self, other: &Self) -> f64 {
         let diff_x = self.x as f64 - other.x as f64;
         let diff_y = self.y as f64 - other.y as f64;
@@ -49,6 +49,38 @@ impl IntCoords2d {
         (self.x, self.y)
     }
 }
+impl Add for IntCoords2d {
+    type Output = IntCoords2d;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        IntCoords2d {
+            x: self.x + rhs.x,
+            y: self.y + rhs.y,
+        }
+    }
+}
+impl Sub for IntCoords2d {
+    type Output = IntCoords2d;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        IntCoords2d {
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
+        }
+    }
+}
+impl AddAssign for IntCoords2d {
+    fn add_assign(&mut self, rhs: Self) {
+        self.x += rhs.x;
+        self.y += rhs.y;
+    }
+}
+impl SubAssign for IntCoords2d {
+    fn sub_assign(&mut self, rhs: Self) {
+        self.x -= rhs.x;
+        self.y -= rhs.y;
+    }
+}
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub struct IntCoords {
@@ -57,9 +89,12 @@ pub struct IntCoords {
 }
 impl IntCoords {
     pub fn new(x: i64, y: i64, z: i64) -> Self {
-        Self { coords2d: IntCoords2d::new(x, y), z }
+        Self {
+            coords2d: IntCoords2d::new(x, y),
+            z,
+        }
     }
-    
+
     pub fn zero() -> Self {
         Self::new(0, 0, 0)
     }
@@ -122,6 +157,44 @@ impl IntCoords {
 
     pub fn values(&self) -> (i64, i64, i64) {
         (self.coords2d.x, self.coords2d.y, self.z)
+    }
+}
+impl Add for IntCoords {
+    type Output = IntCoords;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        let IntCoords2d { x, y } = IntCoords2d::add(self.coords2d, rhs.coords2d);
+
+        IntCoords {
+            coords2d: IntCoords2d::new(x, y),
+            z: self.z + rhs.z,
+        }
+    }
+}
+impl Sub for IntCoords {
+    type Output = IntCoords;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        let IntCoords2d { x, y } = IntCoords2d::sub(self.coords2d, rhs.coords2d);
+
+        IntCoords {
+            coords2d: IntCoords2d::new(x, y),
+            z: self.z - rhs.z,
+        }
+    }
+}
+impl AddAssign for IntCoords {
+    fn add_assign(&mut self, rhs: Self) {
+        IntCoords2d::add_assign(&mut self.coords2d, rhs.coords2d);
+
+        self.z += rhs.z;
+    }
+}
+impl SubAssign for IntCoords {
+    fn sub_assign(&mut self, rhs: Self) {
+        IntCoords2d::sub_assign(&mut self.coords2d, rhs.coords2d);
+
+        self.z -= rhs.z;
     }
 }
 

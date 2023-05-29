@@ -1,8 +1,10 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, thread, time::Duration};
+
+use device_query::Keycode;
 
 use crate::{
-    CustomExtraArgs, Entity, EntityManager, Input, System, SystemExtraArgs,
-    TerminalRendererOptions, TerminalRendererState, TerminalRendererSystems, Time,
+    Component, CustomExtraArgs, Entity, EntityManager, Input, Query, System, SystemExtraArgs,
+    TerminalRendererOptions, TerminalRendererState, TerminalRendererSystems, Time, Timer,
 };
 
 const EVENT_INIT: &str = "init";
@@ -14,15 +16,22 @@ pub enum Renderer {
     Terminal(TerminalRendererOptions),
 }
 
+pub struct GameOptions {
+    pub press_escape_to_quit: bool,
+    pub max_frame_rate: u16,
+}
+
 pub struct Game {
     entity_manager: EntityManager,
     events_to_systems: HashMap<&'static str, Vec<System>>,
     is_playing: bool,
     time: Rc<RefCell<Time>>,
     input: Rc<RefCell<Input>>,
+    options: GameOptions,
+    frame_timer: Timer,
 }
 impl Game {
-    pub fn new() -> Self {
+    pub fn new(options: GameOptions) -> Self {
         Self {
             entity_manager: EntityManager::new(),
             events_to_systems: HashMap::from([
@@ -33,6 +42,8 @@ impl Game {
             is_playing: false,
             time: Rc::new(RefCell::new(Time::new())),
             input: Rc::new(RefCell::new(Input::new())),
+            options,
+            frame_timer: Timer::new(),
         }
     }
 
@@ -64,20 +75,40 @@ impl Game {
         let commands = Rc::new(RefCell::new(GameCommandQueue::new()));
 
         self = self.setup_renderer(renderer);
+        self = self.setup_builtin_systems();
 
         self.is_playing = true;
 
         self.trigger_event(EVENT_INIT, &self.make_extra_args(&commands, vec![]));
 
         while self.is_playing {
+            self.frame_timer.restart();
+
             self.update_services();
 
             self.trigger_event(EVENT_UPDATE, &self.make_extra_args(&commands, vec![]));
 
-            self.process_command_queue(&mut commands.borrow_mut());
+            self.process_command_queue(Rc::clone(&commands));
+
+            self.wait_for_frame();
         }
 
         self.trigger_event(EVENT_CLEANUP, &self.make_extra_args(&commands, vec![]));
+    }
+
+    fn wait_for_frame(&self) {
+        let minimum_frame_time = if self.options.max_frame_rate > 0 {
+            1000 / self.options.max_frame_rate
+        } else {
+            0
+        };
+
+        let elapsed_millis = self.frame_timer.elapsed_millis();
+        if elapsed_millis < minimum_frame_time as u128 {
+            thread::sleep(Duration::from_millis(
+                (minimum_frame_time as u128 - elapsed_millis) as u64,
+            ));
+        }
     }
 
     fn update_services(&mut self) {
@@ -114,10 +145,51 @@ impl Game {
         }
     }
 
-    fn process_command_queue(&mut self, commands: &mut GameCommandQueue) {
-        for command in &commands.queue {}
+    fn setup_builtin_systems(mut self) -> Self {
+        if self.options.press_escape_to_quit {
+            self = self.add_update_system(System::new(Query::new(), |_, util| {
+                if util.input().is_key_down(&Keycode::Escape) {
+                    util.commands().issue(GameCommand::Quit);
+                }
+            }));
+        }
 
-        commands.queue.clear();
+        self.add_update_system(System::new(Query::new(), |_, util| {
+            if util.input().is_key_down(&Keycode::LControl) && util.input().is_key_down(&Keycode::C)
+            {
+                util.commands().issue(GameCommand::Quit);
+            }
+        }))
+    }
+
+    fn process_command_queue(&mut self, commands: Rc<RefCell<GameCommandQueue>>) {
+        let old_commands = commands.replace(GameCommandQueue::new());
+
+        for command in old_commands {
+            match command {
+                GameCommand::Quit => {
+                    self.is_playing = false;
+                }
+                GameCommand::AddEntity(components) => {
+                    self.entity_manager.add_entity(Entity::new(), components);
+                }
+                GameCommand::AddComponentsToEntity(entity, components) => {
+                    for component in components {
+                        self.entity_manager
+                            .add_component_to_entity(&entity, component);
+                    }
+                }
+                GameCommand::DestroyEntity(entity) => {
+                    self.entity_manager.remove_entity(&entity);
+                }
+                GameCommand::RemoveComponentFromEntity(entity, component_name) => self
+                    .entity_manager
+                    .remove_component_from_entity(&entity, component_name),
+                GameCommand::TriggerEvent(event_name, custom_args) => {
+                    self.trigger_event(event_name, &self.make_extra_args(&commands, custom_args));
+                }
+            }
+        }
     }
 
     fn make_extra_args(
@@ -134,20 +206,13 @@ impl Game {
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
 pub enum GameCommand {
-    //     Quit,
-    //     ClearEntities,
-    //     AddEntity {
-    //         entity: Entity,
-    //         behaviours: BehaviourList,
-    //     },
-    //     DestroyEntity(String),
-    //     SendMessage {
-    //         entity_id: String,
-    //         message: Message<Box<dyn Any>>,
-    //     },
     Quit,
+    AddEntity(Vec<Box<dyn Component>>),
+    AddComponentsToEntity(Entity, Vec<Box<dyn Component>>),
+    RemoveComponentFromEntity(Entity, &'static str),
+    DestroyEntity(Entity),
+    TriggerEvent(&'static str, CustomExtraArgs),
 }
 
 pub struct GameCommandQueue {

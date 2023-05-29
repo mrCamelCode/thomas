@@ -1,4 +1,3 @@
-use core::panic;
 use std::{
     io::stdout,
     io::Write,
@@ -11,8 +10,8 @@ use crossterm::{
 };
 
 use crate::{
-    core::{Query, System},
-    Component, Dimensions2d, Layer, Matrix, QueryResultList, TerminalRenderer, TransformTerminal,
+    Component, Dimensions2d, Layer, Matrix, Query, QueryResultList, System, TerminalRenderer,
+    TransformTerminal,
 };
 
 const HORIZONTAL_OUTLINE_DELIMITER: &str = "=";
@@ -51,9 +50,10 @@ impl TerminalRendererSystems {
                 Query::new().include::<TerminalRendererState>(),
                 move |results, _| {
                     assert!(
-                        results.len() == 1,
-                        "There can only be one {} in the game at a time.",
-                        TerminalRendererState::name()
+                        results.inclusions().len() == 1,
+                        "There must be exactly 1 {} in the game. Found {}",
+                        TerminalRendererState::name(),
+                        results.inclusions().len()
                     );
 
                     let mut state = results
