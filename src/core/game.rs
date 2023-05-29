@@ -163,7 +163,9 @@ impl Game {
         }
 
         self.add_update_system(System::new(Query::new(), |_, util| {
-            if util.input().is_key_down(&Keycode::LControl) && util.input().is_key_down(&Keycode::C)
+            if util
+                .input()
+                .is_chord_pressed_exclusively(&[&Keycode::LControl, &Keycode::C])
             {
                 util.commands().issue(GameCommand::Quit);
             }
@@ -448,7 +450,7 @@ mod tests {
 
             assert_eq!(game.is_playing, false);
         }
-    
+
         #[test]
         fn queue_is_empty_after_processing() {
             let mut game = Game::new(GameOptions {
@@ -464,7 +466,6 @@ mod tests {
             game.process_command_queue(Rc::clone(&commands));
 
             assert_eq!(commands.borrow().queue.len(), 0);
-
         }
     }
 }

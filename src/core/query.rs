@@ -1,8 +1,4 @@
-use std::{
-    array::IntoIter,
-    cell::{Ref, RefMut},
-    ops::Deref,
-};
+use std::ops::Deref;
 
 use crate::{Component, Entity, StoredComponent, StoredComponentList};
 
@@ -43,7 +39,7 @@ impl Query {
     /// # Panics
     /// Will panic if you break the borrowing rules of Rust with an inclusion. See the Considerations
     /// section for more details.
-    /// 
+    ///
     /// # Considerations
     /// Because inclusions can produce a second set of matches on a query, you'll want to avoid
     /// writing your base query in such a way that it would match on something you're including.
@@ -52,7 +48,7 @@ impl Query {
     /// you'll need to make sure you disjoint your base query such that you're not mutably and immutably
     /// borrowing the same component reference at the same time so as not to break the rules of Rust.
     /// Breaking the rules will result in a panic.
-    /// 
+    ///
     /// # Example
     /// ```
     /// use thomas::{Query, Component};
