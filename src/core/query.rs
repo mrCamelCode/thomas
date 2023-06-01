@@ -7,14 +7,12 @@ pub type WherePredicate = dyn Fn(&dyn Component) -> bool + 'static;
 pub struct Query {
     allowed_components: Vec<ComponentQueryData>,
     forbidden_components: Vec<ComponentQueryData>,
-    included_components: Vec<ComponentQueryData>,
 }
 impl Query {
     pub fn new() -> Self {
         Self {
             allowed_components: vec![],
             forbidden_components: vec![],
-            included_components: vec![],
         }
     }
 
@@ -27,62 +25,6 @@ impl Query {
 
     pub fn has_no<T: Component + 'static>(mut self) -> Self {
         self.forbidden_components
-            .push(ComponentQueryData::new(T::name(), None));
-
-        self
-    }
-
-    /// Whether to always include matches with the specified component. An included component
-    /// is included regardless of any constraints established in the query by
-    /// other functions like `has`, `has_no`, etc.
-    ///
-    /// # Panics
-    /// Will panic if you break the borrowing rules of Rust with an inclusion. See the Considerations
-    /// section for more details.
-    ///
-    /// # Considerations
-    /// Because inclusions can produce a second set of matches on a query, you'll want to avoid
-    /// writing your base query in such a way that it would match on something you're including.
-    /// In this case, it's most likely you should just remove your `include`, but if you can't do
-    /// that you may need to make extra considerations. If you intend to use the component mutably,
-    /// you'll need to make sure you disjoint your base query such that you're not mutably and immutably
-    /// borrowing the same component reference at the same time so as not to break the rules of Rust.
-    /// Breaking the rules will result in a panic.
-    ///
-    /// # Example
-    /// ```
-    /// use thomas::{Query, Component};
-    ///
-    /// #[derive(Component)]
-    /// struct Comp1 {}
-    ///
-    /// #[derive(Component)]
-    /// struct Comp2 {}
-    ///
-    /// #[derive(Component)]
-    /// struct Comp3 {}
-    ///
-    /// // Assuming a world with entities:
-    /// // 0: Comp1, Comp2
-    /// // 1: Comp1
-    /// // 2: Comp2
-    /// // 3: Comp2, Comp3
-    ///
-    /// Query::new()
-    ///     .has::<Comp1>()
-    ///     .has_no::<Comp2>()
-    ///     .include::<Comp3>();
-    ///
-    /// // => Query would produce results of:
-    /// // matches: [
-    /// //   Entity(1): { components: [Comp1] }
-    /// // ],
-    /// // inclusions: [
-    /// //   Entity(3): { components: [Comp3] }
-    /// // ]
-    /// ```
-    pub fn include<T: Component + 'static>(mut self) -> Self {
-        self.included_components
             .push(ComponentQueryData::new(T::name(), None));
 
         self
@@ -108,7 +50,7 @@ impl Query {
     pub(super) fn allowed_components(&self) -> &Vec<ComponentQueryData> {
         &self.allowed_components
     }
-    
+
     pub(super) fn allowed_component_names(&self) -> Vec<&'static str> {
         self.allowed_components
             .iter()
@@ -121,17 +63,6 @@ impl Query {
             .iter()
             .map(|component_query_data| component_query_data.component_name)
             .collect()
-    }
-
-    pub(super) fn included_component_names(&self) -> Vec<&'static str> {
-        self.included_components
-            .iter()
-            .map(|component_query_data| component_query_data.component_name)
-            .collect()
-    }
-
-    pub(super) fn has_inclusions(&self) -> bool {
-        return self.included_components.len() > 0;
     }
 }
 
@@ -151,29 +82,14 @@ impl QueryResult {
 
 pub struct QueryResultList {
     matches: Vec<QueryResult>,
-    inclusions: Vec<QueryResult>,
 }
 impl QueryResultList {
     pub fn new(matches: Vec<QueryResult>) -> Self {
-        Self {
-            matches,
-            inclusions: vec![],
-        }
-    }
-
-    pub fn new_with_inclusions(matches: Vec<QueryResult>, inclusions: Vec<QueryResult>) -> Self {
-        Self {
-            matches,
-            inclusions,
-        }
+        Self { matches }
     }
 
     pub fn matches(&self) -> &Vec<QueryResult> {
         &self.matches
-    }
-
-    pub fn inclusions(&self) -> &Vec<QueryResult> {
-        &self.inclusions
     }
 }
 impl IntoIterator for QueryResultList {

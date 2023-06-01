@@ -212,28 +212,7 @@ impl EntityManager {
         })
         .collect();
 
-        if query.has_inclusions() {
-            let included_component_names = query.included_component_names();
-
-            let inclusions = Self::get_entities_with_components(
-                &self.components_to_entities,
-                &included_component_names,
-            )
-            .into_iter()
-            .map(|matching_entity| QueryResult {
-                entity: matching_entity,
-                components: Self::get_components_on_entity(
-                    &self.entities_to_components,
-                    &matching_entity,
-                    &included_component_names,
-                ),
-            })
-            .collect();
-
-            QueryResultList::new_with_inclusions(matches, inclusions)
-        } else {
-            QueryResultList::new(matches)
-        }
+        QueryResultList::new(matches)
     }
 
     fn entity_components_pass_all_predicates(
@@ -1198,104 +1177,6 @@ mod tests {
                     .iter()
                     .find(|result| **result.entity() == 1)
                     .is_some());
-            }
-        }
-
-        mod inclusions {
-            use super::*;
-
-            #[derive(Component)]
-            struct Comp1 {}
-
-            #[derive(Component)]
-            struct Comp2 {}
-
-            #[derive(Component)]
-            struct Comp3 {}
-
-            #[test]
-            fn inclusions_are_present_when_they_do_not_conflict_with_query_specs() {
-                let mut em = EntityManager::new();
-
-                em.add_entity(Entity(0), vec![Box::new(Comp1 {}), Box::new(Comp2 {})]);
-                em.add_entity(Entity(1), vec![Box::new(Comp1 {})]);
-                em.add_entity(Entity(2), vec![Box::new(Comp2 {})]);
-                em.add_entity(Entity(3), vec![Box::new(Comp2 {}), Box::new(Comp3 {})]);
-
-                let query_results = em.query(&Query::new().has::<Comp1>().include::<Comp3>());
-
-                assert_eq!(query_results.len(), 2);
-                assert_eq!(query_results.inclusions().len(), 1);
-
-                for result in &query_results {
-                    match result.entity() {
-                        Entity(0) | Entity(1) => {
-                            assert_eq!(result.components.len(), 1);
-
-                            assert!(result.components().try_get::<Comp1>().is_some());
-                        }
-                        Entity(n) => {
-                            panic!("Entity {n} was present in results but it shouldn't have been.");
-                        }
-                    }
-                }
-
-                for inclusions in query_results.inclusions() {
-                    match inclusions.entity() {
-                        Entity(3) => {
-                            assert_eq!(inclusions.components().len(), 1);
-
-                            assert!(inclusions.components().try_get::<Comp3>().is_some());
-                        }
-                        Entity(n) => {
-                            panic!("Entity {n} was present in results but it shouldn't have been.");
-                        }
-                    }
-                }
-            }
-
-            #[test]
-            fn inclusions_are_present_even_when_they_conflict_with_query_specs() {
-                let mut em = EntityManager::new();
-
-                em.add_entity(Entity(0), vec![Box::new(Comp1 {}), Box::new(Comp2 {})]);
-                em.add_entity(Entity(1), vec![Box::new(Comp1 {})]);
-                em.add_entity(Entity(2), vec![Box::new(Comp2 {})]);
-                em.add_entity(Entity(3), vec![Box::new(Comp2 {}), Box::new(Comp3 {})]);
-
-                let query_results = em.query(
-                    &Query::new()
-                        .has::<Comp1>()
-                        .has_no::<Comp2>()
-                        .include::<Comp3>(),
-                );
-
-                assert_eq!(query_results.len(), 1);
-                assert_eq!(query_results.inclusions().len(), 1);
-
-                for result in &query_results {
-                    match result.entity() {
-                        Entity(1) => {
-                            assert_eq!(result.components.len(), 1);
-                            assert!(result.components().try_get::<Comp1>().is_some());
-                        }
-                        Entity(n) => {
-                            panic!("Entity {n} was present in results but it shouldn't have been.");
-                        }
-                    }
-                }
-
-                for inclusion in query_results.inclusions() {
-                    match inclusion.entity() {
-                        Entity(3) => {
-                            assert_eq!(inclusion.components().len(), 1);
-                            assert!(inclusion.components().try_get::<Comp3>().is_some());
-                        }
-                        Entity(n) => {
-                            panic!("Entity {n} was present in results but it shouldn't have been.");
-                        }
-                    }
-                }
             }
         }
     }

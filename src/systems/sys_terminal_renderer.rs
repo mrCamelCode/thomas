@@ -48,18 +48,17 @@ impl TerminalRendererSystems {
         Self {
             init_system: System::new_with_priority(
                 Priority::highest(),
-                vec![Query::new().include::<TerminalRendererState>()],
+                vec![Query::new().has::<TerminalRendererState>()],
                 move |results, _| {
                     if let [state_query, ..] = &results[..] {
                         assert!(
-                            state_query.inclusions().len() == 1,
+                            state_query.len() == 1,
                             "There must be exactly 1 {} in the game. Found {}",
                             TerminalRendererState::name(),
-                            state_query.inclusions().len()
+                            state_query.len()
                         );
 
                         let mut state = state_query
-                            .inclusions()
                             .get(0)
                             .expect(&format!(
                                 "There is a {} available in the world at init.",
@@ -113,19 +112,20 @@ impl TerminalRendererSystems {
             ),
             update_system: System::new_with_priority(
                 Priority::higher_than(Priority::lowest()),
-                vec![Query::new()
-                    .has::<TerminalRenderer>()
-                    .has_where::<TerminalTransform>(move |transform_terminal| {
-                        let (x, y) = transform_terminal.coords.values();
+                vec![
+                    Query::new()
+                        .has::<TerminalRenderer>()
+                        .has_where::<TerminalTransform>(move |transform_terminal| {
+                            let (x, y) = transform_terminal.coords.values();
 
-                        (x >= 0 && x as u64 <= options.screen_resolution.width())
-                            && (y >= 0 && y as u64 <= options.screen_resolution.height())
-                    })
-                    .include::<TerminalRendererState>()],
+                            (x >= 0 && x as u64 <= options.screen_resolution.width())
+                                && (y >= 0 && y as u64 <= options.screen_resolution.height())
+                        }),
+                    Query::new().has::<TerminalRendererState>(),
+                ],
                 move |results, _| {
                     if let [renderables_query, state_query, ..] = &results[..] {
                         let mut state = state_query
-                            .inclusions()
                             .get(0)
                             .expect(&format!(
                                 "The {} component is available on update.",
@@ -134,7 +134,8 @@ impl TerminalRendererSystems {
                             .components()
                             .get_mut::<TerminalRendererState>();
 
-                        let new_render_string = make_render_string(&renderables_query, &state.options);
+                        let new_render_string =
+                            make_render_string(&renderables_query, &state.options);
 
                         if state.is_initial_render {
                             if let Err(e) = write!(stdout(), "{}", new_render_string) {
@@ -181,11 +182,10 @@ impl TerminalRendererSystems {
                 },
             ),
             cleanup_system: System::new(
-                vec![Query::new().include::<TerminalRendererState>()],
+                vec![Query::new().has::<TerminalRendererState>()],
                 |results, _| {
                     if let [state_query, ..] = &results[..] {
                         let state = state_query
-                            .inclusions()
                             .get(0)
                             .expect(&format!(
                                 "The {} component is available on cleanup.",
