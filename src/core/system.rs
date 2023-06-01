@@ -7,19 +7,19 @@ use std::{
 
 use crate::{GameCommandQueue, Input, Query, QueryResultList, Time, Priority};
 
-pub type OperatorFn = dyn Fn(QueryResultList, &SystemExtraArgs) -> ();
+pub type OperatorFn = dyn Fn(Vec<QueryResultList>, &SystemExtraArgs) -> ();
 pub struct System {
-    query: Query,
+    queries: Vec<Query>,
     operator: Box<OperatorFn>,
     priority: Priority,
 }
 impl System {
     pub fn new(
-        query: Query,
-        operator: impl Fn(QueryResultList, &SystemExtraArgs) -> () + 'static,
+        queries: Vec<Query>,
+        operator: impl Fn(Vec<QueryResultList>, &SystemExtraArgs) -> () + 'static,
     ) -> Self {
         Self {
-            query,
+            queries,
             operator: Box::new(operator),
             priority: Priority::default(),
         }
@@ -27,18 +27,18 @@ impl System {
 
     pub fn new_with_priority(
         priority: Priority,
-        query: Query,
-        operator: impl Fn(QueryResultList, &SystemExtraArgs) -> () + 'static,
+        queries: Vec<Query>,
+        operator: impl Fn(Vec<QueryResultList>, &SystemExtraArgs) -> () + 'static,
     ) -> Self {
         Self {
-            query,
+            queries,
             operator: Box::new(operator),
             priority
         }
     }
 
-    pub(crate) fn query(&self) -> &Query {
-        &self.query
+    pub(crate) fn queries(&self) -> &Vec<Query> {
+        &self.queries
     }
 
     pub(crate) fn operator(&self) -> &OperatorFn {

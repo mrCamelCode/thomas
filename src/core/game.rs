@@ -127,9 +127,13 @@ impl Game {
     fn trigger_event(&self, event_name: &'static str, extra_args: &SystemExtraArgs) {
         if let Some(system_list) = self.events_to_systems.get(event_name) {
             for system in system_list {
-                let query_results = self.entity_manager.query(system.query());
+                let queries_results = system
+                    .queries()
+                    .iter()
+                    .map(|query| self.entity_manager.query(query))
+                    .collect();
 
-                system.operator()(query_results, extra_args);
+                system.operator()(queries_results, extra_args);
             }
         }
     }
@@ -155,14 +159,14 @@ impl Game {
 
     fn setup_builtin_systems(mut self) -> Self {
         if self.options.press_escape_to_quit {
-            self = self.add_update_system(System::new(Query::new(), |_, util| {
+            self = self.add_update_system(System::new(vec![], |_, util| {
                 if util.input().is_key_down(&Keycode::Escape) {
                     util.commands().issue(GameCommand::Quit);
                 }
             }));
         }
 
-        self.add_update_system(System::new(Query::new(), |_, util| {
+        self.add_update_system(System::new(vec![], |_, util| {
             if util
                 .input()
                 .is_chord_pressed_exclusively(&[&Keycode::LControl, &Keycode::C])
@@ -273,30 +277,30 @@ mod tests {
             })
             .add_init_system(System::new_with_priority(
                 Priority::new(5),
-                Query::new(),
+                vec![],
                 |_, _| {},
             ))
             .add_init_system(System::new_with_priority(
                 Priority::new(1),
-                Query::new(),
+                vec![],
                 |_, _| {},
             ))
             .add_init_system(System::new_with_priority(
                 Priority::new(3),
-                Query::new(),
+                vec![],
                 |_, _| {},
             ))
             .add_system(
                 EVENT_CUSTOM,
-                System::new_with_priority(Priority::new(50), Query::new(), |_, _| {}),
+                System::new_with_priority(Priority::new(50), vec![], |_, _| {}),
             )
             .add_system(
                 EVENT_CUSTOM,
-                System::new_with_priority(Priority::new(10), Query::new(), |_, _| {}),
+                System::new_with_priority(Priority::new(10), vec![], |_, _| {}),
             )
             .add_system(
                 EVENT_CUSTOM,
-                System::new_with_priority(Priority::new(30), Query::new(), |_, _| {}),
+                System::new_with_priority(Priority::new(30), vec![], |_, _| {}),
             );
 
             game.sort_systems_by_priority();
@@ -323,9 +327,9 @@ mod tests {
                 press_escape_to_quit: false,
                 max_frame_rate: 5,
             })
-            .add_init_system(System::new(Query::new(), |_, _| {}))
-            .add_update_system(System::new(Query::new(), |_, _| {}))
-            .add_cleanup_system(System::new(Query::new(), |_, _| {}));
+            .add_init_system(System::new(vec![], |_, _| {}))
+            .add_update_system(System::new(vec![], |_, _| {}))
+            .add_cleanup_system(System::new(vec![], |_, _| {}));
 
             assert_eq!(game.events_to_systems.get(EVENT_INIT).unwrap().len(), 1);
             assert_eq!(game.events_to_systems.get(EVENT_UPDATE).unwrap().len(), 1);
@@ -338,7 +342,7 @@ mod tests {
                 press_escape_to_quit: false,
                 max_frame_rate: 5,
             })
-            .add_system("my key", System::new(Query::new(), |_, _| {}));
+            .add_system("my key", System::new(vec![], |_, _| {}));
 
             assert_eq!(game.events_to_systems.get("my key").unwrap().len(), 1);
         }
@@ -362,13 +366,13 @@ mod tests {
             })
             .add_system(
                 EVENT_1,
-                System::new(Query::new(), |_, _| {
+                System::new(vec![], |_, _| {
                     COUNTER_1.fetch_add(2, Ordering::Relaxed);
                 }),
             )
             .add_system(
                 EVENT_1,
-                System::new(Query::new(), |_, _| {
+                System::new(vec![], |_, _| {
                     COUNTER_2.fetch_add(5, Ordering::Relaxed);
                 }),
             );
@@ -390,7 +394,7 @@ mod tests {
             })
             .add_system(
                 EVENT_1,
-                System::new(Query::new(), |_, args| {
+                System::new(vec![], |_, args| {
                     // These will panic if any fail.
                     args.commands();
                     args.input();
@@ -412,7 +416,7 @@ mod tests {
             })
             .add_system(
                 EVENT_1,
-                System::new(Query::new(), |_, args| {
+                System::new(vec![], |_, args| {
                     let custom = args.try_get::<i32>("custom");
 
                     assert!(custom.is_some());
