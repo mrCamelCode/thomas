@@ -3,12 +3,13 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc, thread, time::Duration};
 use device_query::Keycode;
 
 use crate::{
-    Component, CustomExtraArgs, Entity, EntityManager, Input, Query, System, SystemExtraArgs,
+    Component, CustomExtraArgs, Entity, EntityManager, Input, System, SystemExtraArgs,
     TerminalRendererOptions, TerminalRendererState, TerminalRendererSystems, Time, Timer,
 };
 
 const EVENT_INIT: &str = "init";
 const EVENT_UPDATE: &str = "update";
+const EVENT_AFTER_UPDATE: &str = "after-update";
 const EVENT_CLEANUP: &str = "cleanup";
 
 #[derive(PartialEq, Eq)]
@@ -55,6 +56,10 @@ impl Game {
         self.add_system(EVENT_UPDATE, system)
     }
 
+    pub fn add_after_update_system(self, system: System) -> Self {
+        self.add_system(EVENT_AFTER_UPDATE, system)
+    }
+
     pub fn add_cleanup_system(self, system: System) -> Self {
         self.add_system(EVENT_CLEANUP, system)
     }
@@ -81,21 +86,24 @@ impl Game {
 
         self.is_playing = true;
 
-        self.trigger_event(EVENT_INIT, &self.make_extra_args(&commands, vec![]));
+        let extra_args = self.make_extra_args(&commands, vec![]);
+
+        self.trigger_event(EVENT_INIT, &extra_args);
 
         while self.is_playing {
             self.frame_timer.restart();
 
             self.update_services();
 
-            self.trigger_event(EVENT_UPDATE, &self.make_extra_args(&commands, vec![]));
+            self.trigger_event(EVENT_UPDATE, &extra_args);
+            self.trigger_event(EVENT_AFTER_UPDATE, &extra_args);
 
             self.process_command_queue(Rc::clone(&commands));
 
             self.wait_for_frame();
         }
 
-        self.trigger_event(EVENT_CLEANUP, &self.make_extra_args(&commands, vec![]));
+        self.trigger_event(EVENT_CLEANUP, &extra_args);
     }
 
     fn wait_for_frame(&self) {
@@ -146,12 +154,12 @@ impl Game {
                     vec![Box::new(TerminalRendererState::new(options))],
                 );
 
-                let (init_system, update_system, cleanup_system) =
+                let (init_system, after_update_system, cleanup_system) =
                     TerminalRendererSystems::new(options).extract_systems();
 
                 return self
                     .add_init_system(init_system)
-                    .add_update_system(update_system)
+                    .add_after_update_system(after_update_system)
                     .add_cleanup_system(cleanup_system);
             }
         }

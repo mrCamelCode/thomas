@@ -40,7 +40,7 @@ impl TerminalRendererState {
 
 pub(crate) struct TerminalRendererSystems {
     init_system: System,
-    update_system: System,
+    after_update_system: System,
     cleanup_system: System,
 }
 impl TerminalRendererSystems {
@@ -110,8 +110,8 @@ impl TerminalRendererSystems {
                     }
                 },
             ),
-            update_system: System::new_with_priority(
-                Priority::higher_than(Priority::lowest()),
+            after_update_system: System::new_with_priority(
+                Priority::lowest(),
                 vec![
                     Query::new()
                         .has::<TerminalRenderer>()
@@ -216,7 +216,7 @@ impl TerminalRendererSystems {
     }
 
     pub(crate) fn extract_systems(self) -> (System, System, System) {
-        (self.init_system, self.update_system, self.cleanup_system)
+        (self.init_system, self.after_update_system, self.cleanup_system)
     }
 }
 

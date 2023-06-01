@@ -15,6 +15,10 @@ impl Layer {
         Self { value: i32::MIN }
     }
 
+    pub fn furthest_foreground() -> Self {
+        Self { value: i32::MAX }
+    }
+
     pub fn above(other: &Layer) -> Self {
         Self {
             value: other.value + 1,
