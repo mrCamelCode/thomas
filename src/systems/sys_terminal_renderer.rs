@@ -22,10 +22,10 @@ const TERMINAL_DIMENSIONS_PADDING: u16 = 10;
 
 #[derive(Component, Debug)]
 pub(crate) struct TerminalRendererState {
-    initial_terminal_size: (u16, u16),
-    options: TerminalRendererOptions,
-    prev_render: String,
-    is_initial_render: bool,
+    pub initial_terminal_size: (u16, u16),
+    pub options: TerminalRendererOptions,
+    pub prev_render: String,
+    pub is_initial_render: bool,
 }
 impl TerminalRendererState {
     pub(crate) fn new(options: TerminalRendererOptions) -> Self {
@@ -109,7 +109,7 @@ impl TerminalRendererSystems {
                 },
             ),
             update_system: System::new_with_priority(
-                Priority::lowest(),
+                Priority::higher_than(Priority::lowest()),
                 Query::new()
                     .has::<TerminalRenderer>()
                     .has_where::<TerminalTransform>(move |transform_terminal| {
