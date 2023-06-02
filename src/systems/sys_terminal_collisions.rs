@@ -2,7 +2,7 @@ use std::{cell::Ref, collections::HashMap};
 
 use crate::{
     Entity, GameCommand, IntCoords2d, Query, System, SystemsGenerator, TerminalCollider,
-    TerminalCollision, TerminalTransform, EVENT_UPDATE, EVENT_AFTER_UPDATE,
+    TerminalCollision, TerminalTransform, EVENT_AFTER_UPDATE,
 };
 
 pub struct TerminalCollisionsSystemsGenerator {}
