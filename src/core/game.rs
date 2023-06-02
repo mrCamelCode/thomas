@@ -363,12 +363,12 @@ mod tests {
 
             struct TestGenerator {}
             impl SystemsGenerator for TestGenerator {
-                fn generate(&self) -> HashMap<&'static str, System> {
-                    HashMap::from([
+                fn generate(&self) -> Vec<(&'static str, System)> {
+                    vec![
                         (EVENT_INIT, System::new(vec![], |_, _| {})),
                         (EVENT_CLEANUP, System::new(vec![], |_, _| {})),
                         (EVENT_CUSTOM, System::new(vec![], |_, _| {})),
-                    ])
+                    ]
                 }
             }
 

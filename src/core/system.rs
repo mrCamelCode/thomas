@@ -135,7 +135,7 @@ impl SystemExtraArgs {
 }
 
 pub trait SystemsGenerator {
-    fn generate(&self) -> HashMap<&'static str, System>;
+    fn generate(&self) -> Vec<(&'static str, System)>;
 }
 #[cfg(test)]
 mod tests {

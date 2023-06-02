@@ -49,10 +49,10 @@ impl TerminalRendererSystemsGenerator {
     }
 }
 impl SystemsGenerator for TerminalRendererSystemsGenerator {
-    fn generate(&self) -> HashMap<&'static str, System> {
+    fn generate(&self) -> Vec<(&'static str, System)> {
         let options = self.options.clone();
 
-        HashMap::from([
+        vec![
             (
                 EVENT_INIT,
                 System::new_with_priority(
@@ -233,7 +233,7 @@ impl SystemsGenerator for TerminalRendererSystemsGenerator {
                     },
                 ),
             ),
-        ])
+        ]
     }
 }
 
@@ -391,8 +391,11 @@ mod tests {
                 let generated_renderer_systems =
                     TerminalRendererSystemsGenerator::new(options).generate();
 
-                let after_update_system =
-                    generated_renderer_systems.get(EVENT_AFTER_UPDATE).unwrap();
+                let after_update_system = &generated_renderer_systems
+                    .iter()
+                    .find(|(name, _)| *name == EVENT_AFTER_UPDATE)
+                    .unwrap()
+                    .1;
 
                 let mut em = EntityManager::new();
                 em.add_entity(vec![Box::new(TerminalTransform {
@@ -446,8 +449,11 @@ mod tests {
                 let generated_renderer_systems =
                     TerminalRendererSystemsGenerator::new(options).generate();
 
-                let after_update_system =
-                    generated_renderer_systems.get(EVENT_AFTER_UPDATE).unwrap();
+                let after_update_system = &generated_renderer_systems
+                    .iter()
+                    .find(|(name, _)| *name == EVENT_AFTER_UPDATE)
+                    .unwrap()
+                    .1;
 
                 let mut em = EntityManager::new();
                 em.add_entity(vec![Box::new(TerminalTransform {
@@ -507,8 +513,11 @@ mod tests {
                 let generated_renderer_systems =
                     TerminalRendererSystemsGenerator::new(options).generate();
 
-                let after_update_system =
-                    generated_renderer_systems.get(EVENT_AFTER_UPDATE).unwrap();
+                let after_update_system = &generated_renderer_systems
+                    .iter()
+                    .find(|(name, _)| *name == EVENT_AFTER_UPDATE)
+                    .unwrap()
+                    .1;
 
                 let mut em = EntityManager::new();
                 em.add_entity(vec![Box::new(TerminalTransform {
@@ -565,8 +574,11 @@ mod tests {
                 let generated_renderer_systems =
                     TerminalRendererSystemsGenerator::new(options).generate();
 
-                let after_update_system =
-                    generated_renderer_systems.get(EVENT_AFTER_UPDATE).unwrap();
+                let after_update_system = &generated_renderer_systems
+                    .iter()
+                    .find(|(name, _)| *name == EVENT_AFTER_UPDATE)
+                    .unwrap()
+                    .1;
 
                 let mut em = EntityManager::new();
                 em.add_entity(vec![Box::new(TerminalTransform {

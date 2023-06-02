@@ -12,3 +12,6 @@ pub use terminal::*;
 
 mod ui;
 pub use ui::*;
+
+mod physics;
+pub use physics::*;

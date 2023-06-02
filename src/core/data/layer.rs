@@ -1,54 +1,48 @@
 #[derive(Clone, Debug)]
-pub struct Layer {
-    value: i32,
-}
+pub struct Layer(i32);
 impl Layer {
     pub fn new(value: i32) -> Self {
-        Self { value }
+        Self(value)
     }
 
     pub fn base() -> Self {
-        Self { value: 0 }
+        Self(0)
     }
 
     pub fn furthest_background() -> Self {
-        Self { value: i32::MIN }
+        Self(i32::MIN)
     }
 
     pub fn furthest_foreground() -> Self {
-        Self { value: i32::MAX }
+        Self(i32::MAX)
     }
 
     pub fn above(other: &Layer) -> Self {
-        Self {
-            value: other.value + 1,
-        }
+        Self(other.value() + 1)
     }
 
     pub fn below(other: &Layer) -> Self {
-        Self {
-            value: other.value - 1,
-        }
+        Self(other.value() - 1)
     }
 
     pub fn with(other: &Layer) -> Self {
-        Self { value: other.value }
+        Self(other.value())
     }
 
     pub fn is_above(&self, other: &Layer) -> bool {
-        self.value > other.value
+        self.value() > other.value()
     }
 
     pub fn is_below(&self, other: &Layer) -> bool {
-        self.value < other.value
+        self.value() < other.value()
     }
 
     pub fn is_with(&self, other: &Layer) -> bool {
-        self.value == other.value
+        self.value() == other.value()
     }
 
     pub fn value(&self) -> i32 {
-        self.value
+        self.0
     }
 }
 

@@ -13,8 +13,8 @@ impl TerminalUiRendererSystemsGenerator {
     }
 }
 impl SystemsGenerator for TerminalUiRendererSystemsGenerator {
-    fn generate(&self) -> HashMap<&'static str, System> {
-        HashMap::from([(
+    fn generate(&self) -> Vec<(&'static str, System)> {
+        vec![(
             EVENT_UPDATE,
             System::new(
                 vec![
@@ -77,7 +77,7 @@ impl SystemsGenerator for TerminalUiRendererSystemsGenerator {
                     }
                 },
             ),
-        )])
+        )]
     }
 }
 
