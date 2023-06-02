@@ -1,4 +1,4 @@
-#[derive(Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct Layer(i32);
 impl Layer {
     pub fn new(value: i32) -> Self {

@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     io::stdout,
     io::Write,
     ops::{Deref, DerefMut},
