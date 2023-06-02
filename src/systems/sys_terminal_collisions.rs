@@ -2,7 +2,7 @@ use std::{cell::Ref, collections::HashMap};
 
 use crate::{
     Entity, GameCommand, IntCoords2d, Query, System, SystemsGenerator, TerminalCollider,
-    TerminalCollision, TerminalTransform, EVENT_UPDATE,
+    TerminalCollision, TerminalTransform, EVENT_UPDATE, EVENT_AFTER_UPDATE,
 };
 
 pub struct TerminalCollisionsSystemsGenerator {}
@@ -14,7 +14,7 @@ impl TerminalCollisionsSystemsGenerator {
 impl SystemsGenerator for TerminalCollisionsSystemsGenerator {
     fn generate(&self) -> Vec<(&'static str, System)> {
         vec![(
-            EVENT_UPDATE,
+            EVENT_AFTER_UPDATE,
             System::new(
                 vec![Query::new()
                     .has_where::<TerminalCollider>(|collider| collider.is_active)
