@@ -134,6 +134,9 @@ impl SystemExtraArgs {
     }
 }
 
+pub trait SystemsGenerator {
+    fn generate(&self) -> HashMap<&'static str, System>;
+}
 #[cfg(test)]
 mod tests {
     use super::*;

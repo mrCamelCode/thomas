@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     io::stdout,
     io::Write,
     ops::{Deref, DerefMut},
@@ -11,7 +12,8 @@ use crossterm::{
 
 use crate::{
     Component, Dimensions2d, Layer, Matrix, Priority, Query, QueryResultList, System,
-    TerminalRenderer, TerminalTransform,
+    SystemsGenerator, TerminalRenderer, TerminalTransform, EVENT_AFTER_UPDATE, EVENT_CLEANUP,
+    EVENT_INIT,
 };
 
 const HORIZONTAL_OUTLINE_DELIMITER: &str = "=";
@@ -38,189 +40,200 @@ impl TerminalRendererState {
     }
 }
 
-pub(crate) struct TerminalRendererSystems {
-    init_system: System,
-    after_update_system: System,
-    cleanup_system: System,
+pub(crate) struct TerminalRendererSystemsGenerator {
+    options: TerminalRendererOptions,
 }
-impl TerminalRendererSystems {
+impl TerminalRendererSystemsGenerator {
     pub(crate) fn new(options: TerminalRendererOptions) -> Self {
-        Self {
-            init_system: System::new_with_priority(
-                Priority::highest(),
-                vec![Query::new().has::<TerminalRendererState>()],
-                move |results, _| {
-                    if let [state_query, ..] = &results[..] {
-                        assert!(
-                            state_query.len() == 1,
-                            "There must be exactly 1 {} in the game. Found {}",
-                            TerminalRendererState::name(),
-                            state_query.len()
-                        );
+        Self { options }
+    }
+}
+impl SystemsGenerator for TerminalRendererSystemsGenerator {
+    fn generate(&self) -> HashMap<&'static str, System> {
+        let options = self.options.clone();
 
-                        let mut state = state_query
-                            .get(0)
-                            .expect(&format!(
-                                "There is a {} available in the world at init.",
-                                TerminalRendererState::name()
-                            ))
-                            .components()
-                            .get_mut::<TerminalRendererState>();
+        HashMap::from([
+            (
+                EVENT_INIT,
+                System::new_with_priority(
+                    Priority::highest(),
+                    vec![Query::new().has::<TerminalRendererState>()],
+                    move |results, _| {
+                        if let [state_query, ..] = &results[..] {
+                            assert!(
+                                state_query.len() == 1,
+                                "There must be exactly 1 {} in the game. Found {}",
+                                TerminalRendererState::name(),
+                                state_query.len()
+                            );
 
-                        if let Ok(size) = terminal::size() {
-                            state.initial_terminal_size = size;
-                        } else {
-                            panic!("TerminalRenderer could not get the terminal's starting size.");
-                        }
+                            let mut state = state_query
+                                .get(0)
+                                .expect(&format!(
+                                    "There is a {} available in the world at init.",
+                                    TerminalRendererState::name()
+                                ))
+                                .components()
+                                .get_mut::<TerminalRendererState>();
 
-                        if state.options.screen_resolution.height()
-                            + TERMINAL_DIMENSIONS_PADDING as u64
-                            > u16::MAX as u64
-                            || state.options.screen_resolution.width()
+                            if let Ok(size) = terminal::size() {
+                                state.initial_terminal_size = size;
+                            } else {
+                                panic!(
+                                    "TerminalRenderer could not get the terminal's starting size."
+                                );
+                            }
+
+                            if state.options.screen_resolution.height()
                                 + TERMINAL_DIMENSIONS_PADDING as u64
                                 > u16::MAX as u64
-                        {
-                            panic!("TerminalRenderer's screen resolution is too large. Neither the width nor height can be greater than {}", u16::MAX - TERMINAL_DIMENSIONS_PADDING);
-                        }
+                                || state.options.screen_resolution.width()
+                                    + TERMINAL_DIMENSIONS_PADDING as u64
+                                    > u16::MAX as u64
+                            {
+                                panic!("TerminalRenderer's screen resolution is too large. Neither the width nor height can be greater than {}", u16::MAX - TERMINAL_DIMENSIONS_PADDING);
+                            }
 
-                        if let Err(e) = execute!(
-                            stdout(),
-                            Clear(ClearType::All),
-                            SetSize(
-                                state.options.screen_resolution.width() as u16
-                                    + TERMINAL_DIMENSIONS_PADDING,
-                                state.options.screen_resolution.height() as u16
-                                    + TERMINAL_DIMENSIONS_PADDING
-                            ),
-                            cursor::Hide,
-                            cursor::MoveTo(0, 0),
-                        ) {
-                            panic!(
+                            if let Err(e) = execute!(
+                                stdout(),
+                                Clear(ClearType::All),
+                                SetSize(
+                                    state.options.screen_resolution.width() as u16
+                                        + TERMINAL_DIMENSIONS_PADDING,
+                                    state.options.screen_resolution.height() as u16
+                                        + TERMINAL_DIMENSIONS_PADDING
+                                ),
+                                cursor::Hide,
+                                cursor::MoveTo(0, 0),
+                            ) {
+                                panic!(
                                 "TerminalRenderer could not do initial setup of game screen. Error: {}",
                                 e
                             );
-                        }
+                            }
 
-                        if let Err(e) = enable_raw_mode() {
-                            panic!(
+                            if let Err(e) = enable_raw_mode() {
+                                panic!(
                                 "TerminalRenderer could not set raw mode, cannot continue. Error: {}",
                                 e
                             );
-                        }
-                    }
-                },
-            ),
-            after_update_system: System::new_with_priority(
-                Priority::lowest(),
-                vec![
-                    Query::new()
-                        .has::<TerminalRenderer>()
-                        .has_where::<TerminalTransform>(move |transform_terminal| {
-                            let (x, y) = transform_terminal.coords.values();
-
-                            (x >= 0 && x as u64 <= options.screen_resolution.width())
-                                && (y >= 0 && y as u64 <= options.screen_resolution.height())
-                        }),
-                    Query::new().has::<TerminalRendererState>(),
-                ],
-                move |results, _| {
-                    if let [renderables_query, state_query, ..] = &results[..] {
-                        let mut state = state_query
-                            .get(0)
-                            .expect(&format!(
-                                "The {} component is available on update.",
-                                TerminalRendererState::name()
-                            ))
-                            .components()
-                            .get_mut::<TerminalRendererState>();
-
-                        let new_render_string =
-                            make_render_string(&renderables_query, &state.options);
-
-                        if state.is_initial_render {
-                            if let Err(e) = write!(stdout(), "{}", new_render_string) {
-                                panic!("Error occurred while trying to write initial render to the terminal: {e}");
                             }
+                        }
+                    },
+                ),
+            ),
+            (
+                EVENT_AFTER_UPDATE,
+                System::new_with_priority(
+                    Priority::lowest(),
+                    vec![
+                        Query::new()
+                            .has::<TerminalRenderer>()
+                            .has_where::<TerminalTransform>(move |transform_terminal| {
+                                let (x, y) = transform_terminal.coords.values();
 
-                            state.is_initial_render = false;
-                        } else {
-                            let new_render_lines = new_render_string
-                                .split(NEWLINE_DELIMITER)
-                                .collect::<Vec<&str>>();
-                            let prev_render_lines = state
-                                .prev_render
-                                .split(NEWLINE_DELIMITER)
-                                .collect::<Vec<&str>>();
+                                (x >= 0 && x as u64 <= options.screen_resolution.width())
+                                    && (y >= 0 && y as u64 <= options.screen_resolution.height())
+                            }),
+                        Query::new().has::<TerminalRendererState>(),
+                    ],
+                    move |results, _| {
+                        if let [renderables_query, state_query, ..] = &results[..] {
+                            let mut state = state_query
+                                .get(0)
+                                .expect(&format!(
+                                    "The {} component is available on update.",
+                                    TerminalRendererState::name()
+                                ))
+                                .components()
+                                .get_mut::<TerminalRendererState>();
 
-                            for row in 0..new_render_lines.len() {
-                                if new_render_lines[row] != prev_render_lines[row] {
-                                    if let Err(e) =
-                                        execute!(stdout(), cursor::MoveTo(0, row as u16))
-                                    {
-                                        panic!("Error occurred while trying to move the cursor to position (0, {}): {e}", row as u16);
-                                    }
+                            let new_render_string =
+                                make_render_string(&renderables_query, &state.options);
 
-                                    if let Err(e) = write!(
-                                        stdout(),
-                                        "{}",
-                                        new_render_lines[row].replace("\r\n", "")
-                                    ) {
-                                        panic!("Error occurred while trying to write the new render to the terminal: {e}");
-                                    }
+                            if state.is_initial_render {
+                                if let Err(e) = write!(stdout(), "{}", new_render_string) {
+                                    panic!("Error occurred while trying to write initial render to the terminal: {e}");
+                                }
 
-                                    if let Err(e) =
-                                        execute!(stdout(), Clear(ClearType::UntilNewLine))
-                                    {
-                                        panic!("Error occurred while trying to execute the UntilNewLine clear type: {e}");
+                                state.is_initial_render = false;
+                            } else {
+                                let new_render_lines = new_render_string
+                                    .split(NEWLINE_DELIMITER)
+                                    .collect::<Vec<&str>>();
+                                let prev_render_lines = state
+                                    .prev_render
+                                    .split(NEWLINE_DELIMITER)
+                                    .collect::<Vec<&str>>();
+
+                                for row in 0..new_render_lines.len() {
+                                    if new_render_lines[row] != prev_render_lines[row] {
+                                        if let Err(e) =
+                                            execute!(stdout(), cursor::MoveTo(0, row as u16))
+                                        {
+                                            panic!("Error occurred while trying to move the cursor to position (0, {}): {e}", row as u16);
+                                        }
+
+                                        if let Err(e) = write!(
+                                            stdout(),
+                                            "{}",
+                                            new_render_lines[row].replace("\r\n", "")
+                                        ) {
+                                            panic!("Error occurred while trying to write the new render to the terminal: {e}");
+                                        }
+
+                                        if let Err(e) =
+                                            execute!(stdout(), Clear(ClearType::UntilNewLine))
+                                        {
+                                            panic!("Error occurred while trying to execute the UntilNewLine clear type: {e}");
+                                        }
                                     }
                                 }
                             }
-                        }
 
-                        state.prev_render = new_render_string;
-                    }
-                },
+                            state.prev_render = new_render_string;
+                        }
+                    },
+                ),
             ),
-            cleanup_system: System::new(
-                vec![Query::new().has::<TerminalRendererState>()],
-                |results, _| {
-                    if let [state_query, ..] = &results[..] {
-                        let state = state_query
-                            .get(0)
-                            .expect(&format!(
-                                "The {} component is available on cleanup.",
-                                TerminalRendererState::name()
-                            ))
-                            .components()
-                            .get::<TerminalRendererState>();
+            (
+                EVENT_CLEANUP,
+                System::new(
+                    vec![Query::new().has::<TerminalRendererState>()],
+                    |results, _| {
+                        if let [state_query, ..] = &results[..] {
+                            let state = state_query
+                                .get(0)
+                                .expect(&format!(
+                                    "The {} component is available on cleanup.",
+                                    TerminalRendererState::name()
+                                ))
+                                .components()
+                                .get::<TerminalRendererState>();
 
-                        let error_message =
-                        "The terminal may be in a bad state. It's recommended to restart it if you intend to continue using this terminal instance.";
+                            let error_message =
+                    "The terminal may be in a bad state. It's recommended to restart it if you intend to continue using this terminal instance.";
 
-                        if let Err(e) = execute!(
-                            stdout(),
-                            SetSize(state.initial_terminal_size.0, state.initial_terminal_size.1),
-                            cursor::MoveTo(0, state.initial_terminal_size.1),
-                            cursor::Show,
-                        ) {
-                            println!("Could not reset terminal size and cursor visibility. {error_message} Error: {e}");
+                            if let Err(e) = execute!(
+                                stdout(),
+                                SetSize(
+                                    state.initial_terminal_size.0,
+                                    state.initial_terminal_size.1
+                                ),
+                                cursor::MoveTo(0, state.initial_terminal_size.1),
+                                cursor::Show,
+                            ) {
+                                println!("Could not reset terminal size and cursor visibility. {error_message} Error: {e}");
+                            }
+
+                            if let Err(e) = disable_raw_mode() {
+                                println!("Could not disable raw mode. {error_message} Error: {e}");
+                            }
                         }
-
-                        if let Err(e) = disable_raw_mode() {
-                            println!("Could not disable raw mode. {error_message} Error: {e}");
-                        }
-                    }
-                },
+                    },
+                ),
             ),
-        }
-    }
-
-    pub(crate) fn extract_systems(self) -> (System, System, System) {
-        (
-            self.init_system,
-            self.after_update_system,
-            self.cleanup_system,
-        )
+        ])
     }
 }
 
@@ -364,7 +377,7 @@ mod tests {
         use super::*;
 
         mod no_screen_outline {
-            use crate::{Entity, EntityManager, IntCoords2d};
+            use crate::{EntityManager, IntCoords2d};
 
             use super::*;
 
@@ -375,7 +388,11 @@ mod tests {
                     include_screen_outline: false,
                 };
 
-                let (_, update_system, _) = TerminalRendererSystems::new(options).extract_systems();
+                let generated_renderer_systems =
+                    TerminalRendererSystemsGenerator::new(options).generate();
+
+                let after_update_system =
+                    generated_renderer_systems.get(EVENT_AFTER_UPDATE).unwrap();
 
                 let mut em = EntityManager::new();
                 em.add_entity(vec![Box::new(TerminalTransform {
@@ -412,7 +429,7 @@ mod tests {
                     }),
                 ]);
 
-                let query_results = em.query(&update_system.queries()[0]);
+                let query_results = em.query(&after_update_system.queries()[0]);
 
                 let result = make_render_string(&query_results, &options);
 
@@ -426,7 +443,11 @@ mod tests {
                     include_screen_outline: false,
                 };
 
-                let (_, update_system, _) = TerminalRendererSystems::new(options).extract_systems();
+                let generated_renderer_systems =
+                    TerminalRendererSystemsGenerator::new(options).generate();
+
+                let after_update_system =
+                    generated_renderer_systems.get(EVENT_AFTER_UPDATE).unwrap();
 
                 let mut em = EntityManager::new();
                 em.add_entity(vec![Box::new(TerminalTransform {
@@ -463,7 +484,7 @@ mod tests {
                     }),
                 ]);
 
-                let query_results = em.query(&update_system.queries()[0]);
+                let query_results = em.query(&after_update_system.queries()[0]);
 
                 let result = make_render_string(&query_results, &options);
 
@@ -472,7 +493,7 @@ mod tests {
         }
 
         mod with_screen_outline {
-            use crate::{Entity, EntityManager, IntCoords2d};
+            use crate::{EntityManager, IntCoords2d};
 
             use super::*;
 
@@ -483,7 +504,11 @@ mod tests {
                     include_screen_outline: true,
                 };
 
-                let (_, update_system, _) = TerminalRendererSystems::new(options).extract_systems();
+                let generated_renderer_systems =
+                    TerminalRendererSystemsGenerator::new(options).generate();
+
+                let after_update_system =
+                    generated_renderer_systems.get(EVENT_AFTER_UPDATE).unwrap();
 
                 let mut em = EntityManager::new();
                 em.add_entity(vec![Box::new(TerminalTransform {
@@ -520,7 +545,7 @@ mod tests {
                     }),
                 ]);
 
-                let query_results = em.query(&update_system.queries()[0]);
+                let query_results = em.query(&after_update_system.queries()[0]);
 
                 let result = make_render_string(&query_results, &options);
 
@@ -537,7 +562,11 @@ mod tests {
                     include_screen_outline: true,
                 };
 
-                let (_, update_system, _) = TerminalRendererSystems::new(options).extract_systems();
+                let generated_renderer_systems =
+                    TerminalRendererSystemsGenerator::new(options).generate();
+
+                let after_update_system =
+                    generated_renderer_systems.get(EVENT_AFTER_UPDATE).unwrap();
 
                 let mut em = EntityManager::new();
                 em.add_entity(vec![Box::new(TerminalTransform {
@@ -574,7 +603,7 @@ mod tests {
                     }),
                 ]);
 
-                let query_results = em.query(&update_system.queries()[0]);
+                let query_results = em.query(&after_update_system.queries()[0]);
 
                 let result = make_render_string(&query_results, &options);
 

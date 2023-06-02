@@ -4,7 +4,8 @@ use device_query::Keycode;
 
 use crate::{
     Component, CustomExtraArgs, Entity, EntityManager, Input, System, SystemExtraArgs,
-    TerminalRendererOptions, TerminalRendererState, TerminalRendererSystems, Time, Timer,
+    SystemsGenerator, TerminalRendererOptions, TerminalRendererState,
+    TerminalRendererSystemsGenerator, Time, Timer,
 };
 
 pub const EVENT_INIT: &str = "init";
@@ -35,11 +36,7 @@ impl Game {
     pub fn new(options: GameOptions) -> Self {
         Self {
             entity_manager: EntityManager::new(),
-            events_to_systems: HashMap::from([
-                (EVENT_INIT, vec![]),
-                (EVENT_UPDATE, vec![]),
-                (EVENT_CLEANUP, vec![]),
-            ]),
+            events_to_systems: HashMap::new(),
             is_playing: false,
             time: Rc::new(RefCell::new(Time::new())),
             input: Rc::new(RefCell::new(Input::new())),
@@ -71,6 +68,14 @@ impl Game {
 
         if let Some(system_list) = self.events_to_systems.get_mut(event_name) {
             system_list.push(system);
+        }
+
+        self
+    }
+
+    pub fn add_systems_from_generator(mut self, systems_generator: impl SystemsGenerator) -> Self {
+        for (event_name, system) in systems_generator.generate() {
+            self = self.add_system(event_name, system);
         }
 
         self
@@ -152,13 +157,8 @@ impl Game {
                 self.entity_manager
                     .add_entity(vec![Box::new(TerminalRendererState::new(options))]);
 
-                let (init_system, after_update_system, cleanup_system) =
-                    TerminalRendererSystems::new(options).extract_systems();
-
                 return self
-                    .add_init_system(init_system)
-                    .add_after_update_system(after_update_system)
-                    .add_cleanup_system(cleanup_system);
+                    .add_systems_from_generator(TerminalRendererSystemsGenerator::new(options));
             }
         }
     }
@@ -351,6 +351,38 @@ mod tests {
             .add_system("my key", System::new(vec![], |_, _| {}));
 
             assert_eq!(game.events_to_systems.get("my key").unwrap().len(), 1);
+        }
+    }
+
+    mod test_add_systems_from_generator {
+        use super::*;
+
+        #[test]
+        fn adds_all_systems_specified_in_generated_map() {
+            const EVENT_CUSTOM: &str = "custom";
+
+            struct TestGenerator {}
+            impl SystemsGenerator for TestGenerator {
+                fn generate(&self) -> HashMap<&'static str, System> {
+                    HashMap::from([
+                        (EVENT_INIT, System::new(vec![], |_, _| {})),
+                        (EVENT_CLEANUP, System::new(vec![], |_, _| {})),
+                        (EVENT_CUSTOM, System::new(vec![], |_, _| {})),
+                    ])
+                }
+            }
+
+            let game = Game::new(GameOptions {
+                press_escape_to_quit: false,
+                max_frame_rate: 5,
+            })
+            .add_systems_from_generator(TestGenerator {});
+
+            assert_eq!(game.events_to_systems.len(), 3);
+
+            assert_eq!(game.events_to_systems.get(EVENT_INIT).unwrap().len(), 1);
+            assert_eq!(game.events_to_systems.get(EVENT_CLEANUP).unwrap().len(), 1);
+            assert_eq!(game.events_to_systems.get(EVENT_CUSTOM).unwrap().len(), 1);
         }
     }
 

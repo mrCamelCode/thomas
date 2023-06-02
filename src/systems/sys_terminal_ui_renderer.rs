@@ -2,17 +2,21 @@ use std::collections::HashMap;
 
 use crate::{
     Alignment, Component, GameCommand, IntCoords2d, Layer, Query, QueryResultList, System,
-    SystemExtraArgs, TerminalRenderer, TerminalRendererOptions, TerminalRendererState,
-    TerminalTextCharacter, TerminalTransform, Text, UiAnchor,
+    SystemExtraArgs, SystemsGenerator, TerminalRenderer, TerminalRendererOptions,
+    TerminalRendererState, TerminalTextCharacter, TerminalTransform, Text, UiAnchor, EVENT_UPDATE,
 };
 
-pub struct TerminalUiRendererSystem {
-    update_system: System,
-}
-impl TerminalUiRendererSystem {
+pub struct TerminalUiRendererSystemsGenerator {}
+impl TerminalUiRendererSystemsGenerator {
     pub fn new() -> Self {
-        Self {
-            update_system: System::new(
+        Self {}
+    }
+}
+impl SystemsGenerator for TerminalUiRendererSystemsGenerator {
+    fn generate(&self) -> HashMap<&'static str, System> {
+        HashMap::from([(
+            EVENT_UPDATE,
+            System::new(
                 vec![
                     Query::new().has::<Text>(),
                     Query::new().has::<TerminalRendererState>(),
@@ -44,14 +48,10 @@ impl TerminalUiRendererSystem {
 
                             let justification_offset = match text.justification {
                                 Alignment::Left => IntCoords2d::zero(),
-                                Alignment::Middle => IntCoords2d::new(
-                                    -((chars.len() / 2) as i64),
-                                    0,
-                                ),
-                                Alignment::Right => IntCoords2d::new(
-                                    -(chars.len() as i64),
-                                    0,
-                                ),
+                                Alignment::Middle => {
+                                    IntCoords2d::new(-((chars.len() / 2) as i64), 0)
+                                }
+                                Alignment::Right => IntCoords2d::new(-(chars.len() as i64), 0),
                             };
 
                             let starting_position = IntCoords2d::new(anchor_x, anchor_y)
@@ -77,11 +77,7 @@ impl TerminalUiRendererSystem {
                     }
                 },
             ),
-        }
-    }
-
-    pub fn extract_systems(self) -> System {
-        self.update_system
+        )])
     }
 }
 
@@ -100,12 +96,30 @@ fn get_anchor_positions(options: &TerminalRendererOptions) -> HashMap<UiAnchor, 
 
     HashMap::from([
         (UiAnchor::TopLeft, IntCoords2d::new(0, 0)),
-        (UiAnchor::MiddleTop, IntCoords2d::new(zero_indexed_width / 2, 0)),
+        (
+            UiAnchor::MiddleTop,
+            IntCoords2d::new(zero_indexed_width / 2, 0),
+        ),
         (UiAnchor::TopRight, IntCoords2d::new(zero_indexed_width, 0)),
-        (UiAnchor::MiddleRight, IntCoords2d::new(zero_indexed_width, zero_indexed_height / 2)),
-        (UiAnchor::BottomRight, IntCoords2d::new(zero_indexed_width, zero_indexed_height)),
-        (UiAnchor::MiddleBottom, IntCoords2d::new(zero_indexed_width / 2, zero_indexed_height)),
-        (UiAnchor::BottomLeft, IntCoords2d::new(0, zero_indexed_height)),
-        (UiAnchor::MiddleLeft, IntCoords2d::new(0, zero_indexed_height)),
+        (
+            UiAnchor::MiddleRight,
+            IntCoords2d::new(zero_indexed_width, zero_indexed_height / 2),
+        ),
+        (
+            UiAnchor::BottomRight,
+            IntCoords2d::new(zero_indexed_width, zero_indexed_height),
+        ),
+        (
+            UiAnchor::MiddleBottom,
+            IntCoords2d::new(zero_indexed_width / 2, zero_indexed_height),
+        ),
+        (
+            UiAnchor::BottomLeft,
+            IntCoords2d::new(0, zero_indexed_height),
+        ),
+        (
+            UiAnchor::MiddleLeft,
+            IntCoords2d::new(0, zero_indexed_height),
+        ),
     ])
 }
