@@ -6,7 +6,7 @@ use std::{
 #[derive(PartialEq, Eq, Hash, PartialOrd, Ord, Copy, Clone, Debug)]
 pub struct Entity(pub(crate) u64);
 impl Entity {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         static ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 
         let id = ID_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

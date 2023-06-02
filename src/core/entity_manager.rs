@@ -31,7 +31,7 @@ impl StoredComponentList {
         T: Component + 'static,
     {
         for component in &self.components {
-            if (**component.borrow()).as_any().is::<T>() {
+            if component.try_borrow().is_ok() && (**component.borrow()).as_any().is::<T>() {
                 return Some(Ref::map(component.borrow(), |component| {
                     (**component).as_any().downcast_ref::<T>().unwrap()
                 }));
@@ -46,7 +46,7 @@ impl StoredComponentList {
         T: Component + 'static,
     {
         for component in &self.components {
-            if (**component.borrow()).as_any().is::<T>() {
+            if component.try_borrow().is_ok() && (**component.borrow()).as_any().is::<T>() {
                 return Some(RefMut::map(component.borrow_mut(), |component| {
                     (**component).as_any_mut().downcast_mut::<T>().unwrap()
                 }));
@@ -64,7 +64,7 @@ impl StoredComponentList {
             return component;
         }
 
-        panic!("Component {} was not present.", T::name());
+        panic!("Component {} was not present, or you're trying to borrow it while it's already mutably borrowed.", T::name());
     }
 
     pub fn get_mut<T>(&self) -> RefMut<T>
@@ -75,67 +75,65 @@ impl StoredComponentList {
             return component;
         }
 
-        panic!("Component {} was not present.", T::name());
+        panic!("Component {} was not present, or you're trying to borrow it while it's already mutably borrowed.", T::name());
     }
 }
 
 pub struct EntityManager {
     entities_to_components: EntitiesToComponents,
     components_to_entities: ComponentsToEntities,
+    available_entity_ids: Vec<Entity>,
 }
 impl EntityManager {
     pub fn new() -> Self {
         Self {
             entities_to_components: HashMap::new(),
             components_to_entities: HashMap::new(),
+            available_entity_ids: vec![],
         }
     }
 
-    pub fn add_entity(
-        &mut self,
-        entity: Entity,
-        components: Vec<Box<dyn Component>>,
-    ) -> Option<Entity> {
-        if !self.entities_to_components.contains_key(&entity) {
-            for component in &components {
-                if self
+    pub fn add_entity(&mut self, components: Vec<Box<dyn Component>>) -> Entity {
+        let entity = self.get_next_entity();
+
+        for component in &components {
+            if self
+                .components_to_entities
+                .contains_key(component.component_name())
+            {
+                if let Some(entity_set) = self
                     .components_to_entities
-                    .contains_key(component.component_name())
+                    .get_mut(component.component_name())
                 {
-                    if let Some(entity_set) = self
-                        .components_to_entities
-                        .get_mut(component.component_name())
-                    {
-                        entity_set.insert(entity);
-                    }
-                } else {
-                    let mut entity_set = BTreeSet::new();
                     entity_set.insert(entity);
-
-                    self.components_to_entities
-                        .insert(component.component_name().to_string(), entity_set);
                 }
+            } else {
+                let mut entity_set = BTreeSet::new();
+                entity_set.insert(entity);
+
+                self.components_to_entities
+                    .insert(component.component_name().to_string(), entity_set);
             }
-
-            let mut component_map = HashMap::new();
-
-            for component in components {
-                component_map.insert(
-                    component.component_name().to_string(),
-                    Rc::new(RefCell::new(component)),
-                );
-            }
-
-            self.entities_to_components.insert(entity, component_map);
-
-            return Some(entity);
         }
 
-        None
+        let mut component_map = HashMap::new();
+
+        for component in components {
+            component_map.insert(
+                component.component_name().to_string(),
+                Rc::new(RefCell::new(component)),
+            );
+        }
+
+        self.entities_to_components.insert(entity, component_map);
+
+        return entity;
     }
 
     pub fn remove_entity(&mut self, entity: &Entity) {
-        if let Some(component_map) = self.entities_to_components.remove(entity) {
+        if let Some((removed_entity, component_map)) =
+            self.entities_to_components.remove_entry(entity)
+        {
             for component in component_map.values() {
                 if let Some(entity_set) = self
                     .components_to_entities
@@ -144,6 +142,8 @@ impl EntityManager {
                     entity_set.remove(entity);
                 }
             }
+
+            self.available_entity_ids.push(removed_entity);
         }
     }
 
@@ -213,6 +213,14 @@ impl EntityManager {
         .collect();
 
         QueryResultList::new(matches)
+    }
+
+    fn get_next_entity(&mut self) -> Entity {
+        if self.available_entity_ids.len() > 0 {
+            self.available_entity_ids.pop().unwrap()
+        } else {
+            Entity::new()
+        }
     }
 
     fn entity_components_pass_all_predicates(
@@ -357,38 +365,70 @@ mod tests {
         prop1: u8,
     }
 
+    mod test_stored_component_list {
+        use super::*;
+
+        #[test]
+        fn can_borrow_multiple_different_components_mutably_at_the_same_time() {
+            let mut em = EntityManager::new();
+
+            em.add_entity(vec![
+                Box::new(EmptyComponent {}),
+                Box::new(TestComponent { prop1: 5 }),
+            ]);
+
+            let results = em.query(&Query::new().has::<EmptyComponent>().has::<TestComponent>());
+
+            for result in results {
+                let mut bind1 = result.components().get_mut::<EmptyComponent>();
+                let mut bind2 = result.components().get_mut::<TestComponent>();
+            }
+        }
+
+        #[test]
+        #[should_panic(
+            expected = "Component EmptyComponent was not present, or you're trying to borrow it while it's already mutably borrowed."
+        )]
+        fn panics_when_trying_to_borrow_the_same_component_mutably_more_than_once() {
+            let mut em = EntityManager::new();
+
+            em.add_entity(vec![Box::new(EmptyComponent {})]);
+
+            let results = em.query(&Query::new().has::<EmptyComponent>());
+
+            for result in results {
+                let mut bind1 = result.components().get_mut::<EmptyComponent>();
+                let mut bind2 = result.components().get_mut::<EmptyComponent>();
+            }
+        }
+
+        #[test]
+        #[should_panic(
+            expected = "Component TestComponent was not present, or you're trying to borrow it while it's already mutably borrowed."
+        )]
+        fn panics_when_trying_to_borrow_a_component_that_is_not_present() {
+            let mut em = EntityManager::new();
+
+            em.add_entity(vec![Box::new(EmptyComponent {})]);
+
+            let results = em.query(&Query::new().has::<EmptyComponent>());
+
+            for result in results {
+                result.components().get::<TestComponent>();
+            }
+        }
+    }
+
     mod test_add_entity {
         use super::*;
 
         #[test]
-        fn returns_entity_and_adds_to_maps_when_entity_does_not_already_exist() {
+        fn returns_entity_and_adds_to_maps() {
             let mut em = EntityManager::new();
 
-            let result = em
-                .add_entity(Entity::new(), vec![])
-                .expect("Entity addition should return ID of added entity.");
+            let result = em.add_entity(vec![]);
 
             let component_map = em.entities_to_components.get(&result);
-
-            assert!(component_map.is_some());
-            assert!(component_map.unwrap().is_empty());
-            assert!(em.components_to_entities.is_empty());
-        }
-
-        #[test]
-        fn returns_none_and_does_nothing_when_entity_already_exists() {
-            let mut em = EntityManager::new();
-
-            let entity = Entity(1);
-            let entity_copy = Entity(1);
-
-            em.add_entity(entity, vec![])
-                .expect("Entity addition should return ID of added entity.");
-            let result2 = em.add_entity(entity_copy, vec![]);
-
-            let component_map = em.entities_to_components.get(&Entity(1));
-
-            assert!(result2.is_none());
 
             assert!(component_map.is_some());
             assert!(component_map.unwrap().is_empty());
@@ -399,9 +439,7 @@ mod tests {
         fn can_add_a_component_with_the_entity() {
             let mut em = EntityManager::new();
 
-            let result = em
-                .add_entity(Entity::new(), vec![Box::new(TestComponent { prop1: 1 })])
-                .expect("Entity addition should return ID of added entity.");
+            let result = em.add_entity(vec![Box::new(TestComponent { prop1: 1 })]);
 
             let component_map = em
                 .entities_to_components
@@ -420,16 +458,11 @@ mod tests {
         fn can_add_multiple_components_with_the_entity() {
             let mut em = EntityManager::new();
 
-            let result = em
-                .add_entity(
-                    Entity::new(),
-                    vec![
-                        Box::new(TestComponent { prop1: 1 }),
-                        Box::new(OtherTestComponent { prop1: 3 }),
-                        Box::new(AnotherTestComponent { prop1: 5 }),
-                    ],
-                )
-                .expect("Entity addition should return ID of added entity.");
+            let result = em.add_entity(vec![
+                Box::new(TestComponent { prop1: 1 }),
+                Box::new(OtherTestComponent { prop1: 3 }),
+                Box::new(AnotherTestComponent { prop1: 5 }),
+            ]);
 
             let component_map = em
                 .entities_to_components
@@ -766,41 +799,32 @@ mod tests {
             fn query_returns_only_relevant_matches() {
                 let mut em = EntityManager::new();
 
-                em.add_entity(
-                    Entity(0),
-                    vec![
-                        Box::new(TestComponent { prop1: 10 }),
-                        Box::new(AnotherTestComponent { prop1: 100 }),
-                    ],
-                );
-                em.add_entity(Entity(1), vec![Box::new(TestComponent { prop1: 20 })]);
+                let entity = em.add_entity(vec![
+                    Box::new(TestComponent { prop1: 10 }),
+                    Box::new(AnotherTestComponent { prop1: 100 }),
+                ]);
+                em.add_entity(vec![Box::new(TestComponent { prop1: 20 })]);
 
                 let query_results = em.query(&Query::new().has::<AnotherTestComponent>());
 
                 assert_eq!((*query_results).len(), 1);
-                assert_eq!(*query_results.get(0).unwrap().entity(), Entity(0));
+                assert_eq!(*query_results.get(0).unwrap().entity(), entity);
             }
 
             #[test]
             fn complex_query_for_more_than_one_component_match_works() {
                 let mut em = EntityManager::new();
 
-                em.add_entity(
-                    Entity(0),
-                    vec![
-                        Box::new(TestComponent { prop1: 10 }),
-                        Box::new(AnotherTestComponent { prop1: 100 }),
-                        Box::new(EmptyComponent {}),
-                    ],
-                );
-                em.add_entity(Entity(1), vec![Box::new(TestComponent { prop1: 20 })]);
-                em.add_entity(
-                    Entity(2),
-                    vec![
-                        Box::new(EmptyComponent {}),
-                        Box::new(TestComponent { prop1: 1 }),
-                    ],
-                );
+                let entity1 = em.add_entity(vec![
+                    Box::new(TestComponent { prop1: 10 }),
+                    Box::new(AnotherTestComponent { prop1: 100 }),
+                    Box::new(EmptyComponent {}),
+                ]);
+                em.add_entity(vec![Box::new(TestComponent { prop1: 20 })]);
+                let entity2 = em.add_entity(vec![
+                    Box::new(EmptyComponent {}),
+                    Box::new(TestComponent { prop1: 1 }),
+                ]);
 
                 let query_results =
                     em.query(&Query::new().has::<EmptyComponent>().has::<TestComponent>());
@@ -808,11 +832,11 @@ mod tests {
                 assert_eq!((*query_results).len(), 2);
                 assert!(query_results
                     .iter()
-                    .find(|result| *result.entity() == Entity(0))
+                    .find(|result| *result.entity() == entity1)
                     .is_some());
                 assert!(query_results
                     .iter()
-                    .find(|result| *result.entity() == Entity(2))
+                    .find(|result| *result.entity() == entity2)
                     .is_some());
             }
 
@@ -820,30 +844,26 @@ mod tests {
             fn can_read_queried_components() {
                 let mut em = EntityManager::new();
 
-                em.add_entity(
-                    Entity(0),
-                    vec![
-                        Box::new(TestComponent { prop1: 10 }),
-                        Box::new(AnotherTestComponent { prop1: 100 }),
-                    ],
-                );
-                em.add_entity(Entity(1), vec![Box::new(TestComponent { prop1: 20 })]);
+                let entity1 = em.add_entity(vec![
+                    Box::new(TestComponent { prop1: 10 }),
+                    Box::new(AnotherTestComponent { prop1: 100 }),
+                ]);
+                let entity2 = em.add_entity(vec![Box::new(TestComponent { prop1: 20 })]);
 
                 let query_results = em.query(&Query::new().has::<TestComponent>());
 
                 assert_eq!((*query_results).len(), 2);
 
                 for result in &query_results {
-                    match result.entity() {
-                        Entity(0) => {
-                            assert_eq!(result.components().get::<TestComponent>().prop1, 10)
-                        }
-                        Entity(1) => {
-                            assert_eq!(result.components().get::<TestComponent>().prop1, 20)
-                        }
-                        entity => {
-                            panic!("Entity present in results that should not be: {:?}", entity)
-                        }
+                    if *result.entity() == entity1 {
+                        assert_eq!(result.components().get::<TestComponent>().prop1, 10)
+                    } else if *result.entity() == entity2 {
+                        assert_eq!(result.components().get::<TestComponent>().prop1, 20)
+                    } else {
+                        panic!(
+                            "Entity present in results that should not be: {:?}",
+                            result.entity()
+                        )
                     }
                 }
             }
@@ -852,21 +872,15 @@ mod tests {
             fn can_mutate_queried_components() {
                 let mut em = EntityManager::new();
 
-                em.add_entity(
-                    Entity(0),
-                    vec![
-                        Box::new(TestComponent { prop1: 10 }),
-                        Box::new(AnotherTestComponent { prop1: 100 }),
-                        Box::new(OtherTestComponent { prop1: 20 }),
-                    ],
-                );
-                em.add_entity(
-                    Entity(1),
-                    vec![
-                        Box::new(TestComponent { prop1: 20 }),
-                        Box::new(AnotherTestComponent { prop1: 2 }),
-                    ],
-                );
+                let entity1 = em.add_entity(vec![
+                    Box::new(TestComponent { prop1: 10 }),
+                    Box::new(AnotherTestComponent { prop1: 100 }),
+                    Box::new(OtherTestComponent { prop1: 20 }),
+                ]);
+                let entity2 = em.add_entity(vec![
+                    Box::new(TestComponent { prop1: 20 }),
+                    Box::new(AnotherTestComponent { prop1: 2 }),
+                ]);
 
                 let query_results = em.query(
                     &Query::new()
@@ -877,36 +891,35 @@ mod tests {
                 assert_eq!(query_results.len(), 2);
 
                 for result in &query_results {
-                    if *result.entity() == Entity(0) {
+                    if *result.entity() == entity1 {
                         result.components().get_mut::<AnotherTestComponent>().prop1 = 50;
 
                         result.components().get_mut::<TestComponent>().prop1 = 1;
-                    } else if *result.entity() == Entity(1) {
+                    } else if *result.entity() == entity2 {
                         result.components().get_mut::<TestComponent>().prop1 = 240;
                     }
                 }
 
                 for result in &query_results {
-                    match result.entity() {
-                        Entity(0) => {
-                            let test_component = result.components().get::<TestComponent>();
-                            let another_test_component =
-                                result.components().get::<AnotherTestComponent>();
+                    if *result.entity() == entity1 {
+                        let test_component = result.components().get::<TestComponent>();
+                        let another_test_component =
+                            result.components().get::<AnotherTestComponent>();
 
-                            assert_eq!(test_component.prop1, 1);
-                            assert_eq!(another_test_component.prop1, 50);
-                        }
-                        Entity(1) => {
-                            let test_component = result.components().get::<TestComponent>();
-                            let another_test_component =
-                                result.components().get::<AnotherTestComponent>();
+                        assert_eq!(test_component.prop1, 1);
+                        assert_eq!(another_test_component.prop1, 50);
+                    } else if *result.entity() == entity2 {
+                        let test_component = result.components().get::<TestComponent>();
+                        let another_test_component =
+                            result.components().get::<AnotherTestComponent>();
 
-                            assert_eq!(test_component.prop1, 240);
-                            assert_eq!(another_test_component.prop1, 2);
-                        }
-                        entity => {
-                            panic!("Entity present in results that should not be: {:?}", entity)
-                        }
+                        assert_eq!(test_component.prop1, 240);
+                        assert_eq!(another_test_component.prop1, 2);
+                    } else {
+                        panic!(
+                            "Entity present in results that should not be: {:?}",
+                            result.entity()
+                        )
                     }
                 }
             }
@@ -915,21 +928,15 @@ mod tests {
             fn where_clauses_exclude_any_potential_matches_that_fail_the_predicate() {
                 let mut em = EntityManager::new();
 
-                em.add_entity(
-                    Entity(0),
-                    vec![
-                        Box::new(TestComponent { prop1: 10 }),
-                        Box::new(AnotherTestComponent { prop1: 100 }),
-                        Box::new(OtherTestComponent { prop1: 20 }),
-                    ],
-                );
-                em.add_entity(
-                    Entity(1),
-                    vec![
-                        Box::new(TestComponent { prop1: 20 }),
-                        Box::new(AnotherTestComponent { prop1: 2 }),
-                    ],
-                );
+                em.add_entity(vec![
+                    Box::new(TestComponent { prop1: 10 }),
+                    Box::new(AnotherTestComponent { prop1: 100 }),
+                    Box::new(OtherTestComponent { prop1: 20 }),
+                ]);
+                let entity = em.add_entity(vec![
+                    Box::new(TestComponent { prop1: 20 }),
+                    Box::new(AnotherTestComponent { prop1: 2 }),
+                ]);
 
                 let query_results = em.query(
                     &Query::new()
@@ -941,7 +948,7 @@ mod tests {
 
                 let result = query_results.get(0).unwrap();
 
-                assert_eq!(**result.entity(), 1);
+                assert_eq!(*result.entity(), entity);
                 assert_eq!(result.components().len(), 2);
                 assert_eq!(result.components().get::<AnotherTestComponent>().prop1, 2);
             }
@@ -954,14 +961,11 @@ mod tests {
             fn query_has_no_results_when_the_forbidden_components_remove_all_potential_matches() {
                 let mut em = EntityManager::new();
 
-                em.add_entity(
-                    Entity(0),
-                    vec![
-                        Box::new(TestComponent { prop1: 10 }),
-                        Box::new(AnotherTestComponent { prop1: 100 }),
-                    ],
-                );
-                em.add_entity(Entity(1), vec![Box::new(TestComponent { prop1: 20 })]);
+                em.add_entity(vec![
+                    Box::new(TestComponent { prop1: 10 }),
+                    Box::new(AnotherTestComponent { prop1: 100 }),
+                ]);
+                em.add_entity(vec![Box::new(TestComponent { prop1: 20 })]);
 
                 let query_results = em.query(
                     &Query::new()
@@ -976,14 +980,11 @@ mod tests {
             fn query_returns_only_relevant_matches() {
                 let mut em = EntityManager::new();
 
-                em.add_entity(
-                    Entity(0),
-                    vec![
-                        Box::new(TestComponent { prop1: 10 }),
-                        Box::new(AnotherTestComponent { prop1: 100 }),
-                    ],
-                );
-                em.add_entity(Entity(1), vec![Box::new(TestComponent { prop1: 20 })]);
+                em.add_entity(vec![
+                    Box::new(TestComponent { prop1: 10 }),
+                    Box::new(AnotherTestComponent { prop1: 100 }),
+                ]);
+                let entity = em.add_entity(vec![Box::new(TestComponent { prop1: 20 })]);
 
                 let query_results = em.query(
                     &Query::new()
@@ -992,29 +993,23 @@ mod tests {
                 );
 
                 assert_eq!((*query_results).len(), 1);
-                assert_eq!(*query_results.get(0).unwrap().entity(), Entity(1));
+                assert_eq!(*query_results.get(0).unwrap().entity(), entity);
             }
 
             #[test]
             fn complex_query_for_more_than_one_component_match_works() {
                 let mut em = EntityManager::new();
 
-                em.add_entity(
-                    Entity(0),
-                    vec![
-                        Box::new(TestComponent { prop1: 10 }),
-                        Box::new(AnotherTestComponent { prop1: 100 }),
-                        Box::new(EmptyComponent {}),
-                    ],
-                );
-                em.add_entity(Entity(1), vec![Box::new(TestComponent { prop1: 20 })]);
-                em.add_entity(
-                    Entity(2),
-                    vec![
-                        Box::new(EmptyComponent {}),
-                        Box::new(TestComponent { prop1: 1 }),
-                    ],
-                );
+                em.add_entity(vec![
+                    Box::new(TestComponent { prop1: 10 }),
+                    Box::new(AnotherTestComponent { prop1: 100 }),
+                    Box::new(EmptyComponent {}),
+                ]);
+                em.add_entity(vec![Box::new(TestComponent { prop1: 20 })]);
+                let entity = em.add_entity(vec![
+                    Box::new(EmptyComponent {}),
+                    Box::new(TestComponent { prop1: 1 }),
+                ]);
 
                 let query_results = em.query(
                     &Query::new()
@@ -1026,7 +1021,7 @@ mod tests {
                 assert_eq!((*query_results).len(), 1);
                 assert!(query_results
                     .iter()
-                    .find(|result| *result.entity() == Entity(2))
+                    .find(|result| *result.entity() == entity)
                     .is_some());
             }
 
@@ -1034,14 +1029,11 @@ mod tests {
             fn can_read_queried_components() {
                 let mut em = EntityManager::new();
 
-                em.add_entity(
-                    Entity(0),
-                    vec![
-                        Box::new(TestComponent { prop1: 10 }),
-                        Box::new(AnotherTestComponent { prop1: 100 }),
-                    ],
-                );
-                em.add_entity(Entity(1), vec![Box::new(TestComponent { prop1: 20 })]);
+                em.add_entity(vec![
+                    Box::new(TestComponent { prop1: 10 }),
+                    Box::new(AnotherTestComponent { prop1: 100 }),
+                ]);
+                let entity = em.add_entity(vec![Box::new(TestComponent { prop1: 20 })]);
 
                 let query_results = em.query(
                     &Query::new()
@@ -1052,13 +1044,10 @@ mod tests {
                 assert_eq!((*query_results).len(), 1);
 
                 for result in &query_results {
-                    match result.entity() {
-                        Entity(1) => {
-                            assert_eq!(result.components().get::<TestComponent>().prop1, 20)
-                        }
-                        entity => {
-                            panic!("Entity present in results that should not be: {:?}", entity)
-                        }
+                    if *result.entity() == entity {
+                        assert_eq!(result.components().get::<TestComponent>().prop1, 20)
+                    } else {
+                        panic!("Entity present in results that should not be: {:?}", entity)
                     }
                 }
             }
@@ -1067,28 +1056,19 @@ mod tests {
             fn can_mutate_queried_components() {
                 let mut em = EntityManager::new();
 
-                em.add_entity(
-                    Entity(0),
-                    vec![
-                        Box::new(TestComponent { prop1: 10 }),
-                        Box::new(AnotherTestComponent { prop1: 100 }),
-                        Box::new(OtherTestComponent { prop1: 20 }),
-                    ],
-                );
-                em.add_entity(
-                    Entity(1),
-                    vec![
-                        Box::new(TestComponent { prop1: 20 }),
-                        Box::new(AnotherTestComponent { prop1: 2 }),
-                    ],
-                );
-                em.add_entity(
-                    Entity(2),
-                    vec![
-                        Box::new(TestComponent { prop1: 50 }),
-                        Box::new(EmptyComponent {}),
-                    ],
-                );
+                let entity1 = em.add_entity(vec![
+                    Box::new(TestComponent { prop1: 10 }),
+                    Box::new(AnotherTestComponent { prop1: 100 }),
+                    Box::new(OtherTestComponent { prop1: 20 }),
+                ]);
+                let entity2 = em.add_entity(vec![
+                    Box::new(TestComponent { prop1: 20 }),
+                    Box::new(AnotherTestComponent { prop1: 2 }),
+                ]);
+                em.add_entity(vec![
+                    Box::new(TestComponent { prop1: 50 }),
+                    Box::new(EmptyComponent {}),
+                ]);
 
                 let query_results = em.query(
                     &Query::new()
@@ -1100,35 +1080,34 @@ mod tests {
                 assert_eq!(query_results.len(), 2);
 
                 for result in &query_results {
-                    if *result.entity() == Entity(0) {
+                    if *result.entity() == entity1 {
                         result.components().get_mut::<AnotherTestComponent>().prop1 = 50;
                         result.components().get_mut::<TestComponent>().prop1 = 1;
-                    } else if *result.entity() == Entity(1) {
+                    } else if *result.entity() == entity2 {
                         result.components().get_mut::<TestComponent>().prop1 = 240;
                     }
                 }
 
                 for result in &query_results {
-                    match result.entity() {
-                        Entity(0) => {
-                            let test_component = result.components().get::<TestComponent>();
-                            let another_test_component =
-                                result.components().get::<AnotherTestComponent>();
+                    if *result.entity() == entity1 {
+                        let test_component = result.components().get::<TestComponent>();
+                        let another_test_component =
+                            result.components().get::<AnotherTestComponent>();
 
-                            assert_eq!(test_component.prop1, 1);
-                            assert_eq!(another_test_component.prop1, 50);
-                        }
-                        Entity(1) => {
-                            let test_component = result.components().get::<TestComponent>();
-                            let another_test_component =
-                                result.components().get::<AnotherTestComponent>();
+                        assert_eq!(test_component.prop1, 1);
+                        assert_eq!(another_test_component.prop1, 50);
+                    } else if *result.entity() == entity2 {
+                        let test_component = result.components().get::<TestComponent>();
+                        let another_test_component =
+                            result.components().get::<AnotherTestComponent>();
 
-                            assert_eq!(test_component.prop1, 240);
-                            assert_eq!(another_test_component.prop1, 2);
-                        }
-                        entity => {
-                            panic!("Entity present in results that should not be: {:?}", entity)
-                        }
+                        assert_eq!(test_component.prop1, 240);
+                        assert_eq!(another_test_component.prop1, 2);
+                    } else {
+                        panic!(
+                            "Entity present in results that should not be: {:?}",
+                            result.entity()
+                        )
                     }
                 }
             }
@@ -1137,29 +1116,20 @@ mod tests {
             fn where_clauses_exclude_any_potential_matches_that_fail_the_predicate() {
                 let mut em = EntityManager::new();
 
-                em.add_entity(
-                    Entity(0),
-                    vec![
-                        Box::new(TestComponent { prop1: 10 }),
-                        Box::new(AnotherTestComponent { prop1: 2 }),
-                        Box::new(OtherTestComponent { prop1: 20 }),
-                    ],
-                );
-                em.add_entity(
-                    Entity(1),
-                    vec![
-                        Box::new(TestComponent { prop1: 20 }),
-                        Box::new(AnotherTestComponent { prop1: 2 }),
-                    ],
-                );
-                em.add_entity(
-                    Entity(2),
-                    vec![
-                        Box::new(TestComponent { prop1: 50 }),
-                        Box::new(EmptyComponent {}),
-                        Box::new(AnotherTestComponent { prop1: 2 }),
-                    ],
-                );
+                let entity1 = em.add_entity(vec![
+                    Box::new(TestComponent { prop1: 10 }),
+                    Box::new(AnotherTestComponent { prop1: 2 }),
+                    Box::new(OtherTestComponent { prop1: 20 }),
+                ]);
+                let entity2 = em.add_entity(vec![
+                    Box::new(TestComponent { prop1: 20 }),
+                    Box::new(AnotherTestComponent { prop1: 2 }),
+                ]);
+                em.add_entity(vec![
+                    Box::new(TestComponent { prop1: 50 }),
+                    Box::new(EmptyComponent {}),
+                    Box::new(AnotherTestComponent { prop1: 2 }),
+                ]);
 
                 let query_results = em.query(
                     &Query::new()
@@ -1171,11 +1141,11 @@ mod tests {
                 assert_eq!(query_results.len(), 2);
                 assert!(query_results
                     .iter()
-                    .find(|result| **result.entity() == 0)
+                    .find(|result| *result.entity() == entity1)
                     .is_some());
                 assert!(query_results
                     .iter()
-                    .find(|result| **result.entity() == 1)
+                    .find(|result| *result.entity() == entity2)
                     .is_some());
             }
         }
@@ -1188,18 +1158,15 @@ mod tests {
         fn is_true_when_all_predicates_pass() {
             let mut em = EntityManager::new();
 
-            em.add_entity(
-                Entity(0),
-                vec![
-                    Box::new(TestComponent { prop1: 10 }),
-                    Box::new(AnotherTestComponent { prop1: 100 }),
-                    Box::new(EmptyComponent {}),
-                ],
-            );
+            let entity = em.add_entity(vec![
+                Box::new(TestComponent { prop1: 10 }),
+                Box::new(AnotherTestComponent { prop1: 100 }),
+                Box::new(EmptyComponent {}),
+            ]);
 
             let result = EntityManager::entity_components_pass_all_predicates(
                 &em.entities_to_components,
-                &Entity(0),
+                &entity,
                 &vec![
                     ComponentQueryData::new(
                         TestComponent::name(),
@@ -1227,18 +1194,15 @@ mod tests {
         fn is_true_when_there_are_no_predicates() {
             let mut em = EntityManager::new();
 
-            em.add_entity(
-                Entity(0),
-                vec![
-                    Box::new(TestComponent { prop1: 10 }),
-                    Box::new(AnotherTestComponent { prop1: 100 }),
-                    Box::new(EmptyComponent {}),
-                ],
-            );
+            let entity = em.add_entity(vec![
+                Box::new(TestComponent { prop1: 10 }),
+                Box::new(AnotherTestComponent { prop1: 100 }),
+                Box::new(EmptyComponent {}),
+            ]);
 
             let result = EntityManager::entity_components_pass_all_predicates(
                 &em.entities_to_components,
-                &Entity(0),
+                &entity,
                 &vec![
                     ComponentQueryData::new(TestComponent::name(), None),
                     ComponentQueryData::new(AnotherTestComponent::name(), None),
@@ -1252,18 +1216,15 @@ mod tests {
         fn is_false_when_all_predicates_fail() {
             let mut em = EntityManager::new();
 
-            em.add_entity(
-                Entity(0),
-                vec![
-                    Box::new(TestComponent { prop1: 10 }),
-                    Box::new(AnotherTestComponent { prop1: 100 }),
-                    Box::new(EmptyComponent {}),
-                ],
-            );
+            let entity = em.add_entity(vec![
+                Box::new(TestComponent { prop1: 10 }),
+                Box::new(AnotherTestComponent { prop1: 100 }),
+                Box::new(EmptyComponent {}),
+            ]);
 
             let result = EntityManager::entity_components_pass_all_predicates(
                 &em.entities_to_components,
-                &Entity(0),
+                &entity,
                 &vec![
                     ComponentQueryData::new(
                         TestComponent::name(),
@@ -1291,18 +1252,15 @@ mod tests {
         fn is_false_when_any_predicate_fails() {
             let mut em = EntityManager::new();
 
-            em.add_entity(
-                Entity(0),
-                vec![
-                    Box::new(TestComponent { prop1: 10 }),
-                    Box::new(AnotherTestComponent { prop1: 100 }),
-                    Box::new(EmptyComponent {}),
-                ],
-            );
+            let entity = em.add_entity(vec![
+                Box::new(TestComponent { prop1: 10 }),
+                Box::new(AnotherTestComponent { prop1: 100 }),
+                Box::new(EmptyComponent {}),
+            ]);
 
             let result = EntityManager::entity_components_pass_all_predicates(
                 &em.entities_to_components,
-                &Entity(0),
+                &entity,
                 &vec![
                     ComponentQueryData::new(
                         TestComponent::name(),
@@ -1346,7 +1304,7 @@ mod tests {
         fn is_empty_when_no_entities_have_the_provided_component() {
             let mut em = EntityManager::new();
 
-            em.add_entity(Entity(0), vec![Box::new(TestComponent { prop1: 10 })]);
+            em.add_entity(vec![Box::new(TestComponent { prop1: 10 })]);
 
             let result = EntityManager::get_entities_with_component(
                 &em.components_to_entities,
@@ -1360,8 +1318,8 @@ mod tests {
         fn works_when_one_entity_matches() {
             let mut em = EntityManager::new();
 
-            em.add_entity(Entity(0), vec![Box::new(TestComponent { prop1: 10 })]);
-            em.add_entity(Entity(1), vec![Box::new(EmptyComponent {})]);
+            em.add_entity(vec![Box::new(TestComponent { prop1: 10 })]);
+            let entity1 = em.add_entity(vec![Box::new(EmptyComponent {})]);
 
             let result = EntityManager::get_entities_with_component(
                 &em.components_to_entities,
@@ -1369,21 +1327,18 @@ mod tests {
             );
 
             assert_eq!(result.len(), 1);
-            assert_eq!(result[0], Entity(1));
+            assert_eq!(result[0], entity1);
         }
 
         #[test]
         fn works_when_multiple_entities_match() {
             let mut em = EntityManager::new();
 
-            em.add_entity(Entity(0), vec![Box::new(TestComponent { prop1: 10 })]);
-            em.add_entity(
-                Entity(1),
-                vec![
-                    Box::new(TestComponent { prop1: 100 }),
-                    Box::new(EmptyComponent {}),
-                ],
-            );
+            let entity1 = em.add_entity(vec![Box::new(TestComponent { prop1: 10 })]);
+            let entity2 = em.add_entity(vec![
+                Box::new(TestComponent { prop1: 100 }),
+                Box::new(EmptyComponent {}),
+            ]);
 
             let result = EntityManager::get_entities_with_component(
                 &em.components_to_entities,
@@ -1391,7 +1346,7 @@ mod tests {
             );
 
             assert_eq!(result.len(), 2);
-            assert!(result.contains(&Entity(0)) && result.contains(&Entity(1)));
+            assert!(result.contains(&entity1) && result.contains(&entity2));
         }
     }
 
@@ -1414,7 +1369,7 @@ mod tests {
         fn is_empty_when_no_entities_have_provided_components() {
             let mut em = EntityManager::new();
 
-            em.add_entity(Entity(0), vec![Box::new(TestComponent { prop1: 10 })]);
+            em.add_entity(vec![Box::new(TestComponent { prop1: 10 })]);
 
             let result = EntityManager::get_entities_with_components(
                 &em.components_to_entities,
@@ -1428,14 +1383,11 @@ mod tests {
         fn returns_entity_list_for_component_when_searching_for_one_component() {
             let mut em = EntityManager::new();
 
-            em.add_entity(Entity(0), vec![Box::new(TestComponent { prop1: 10 })]);
-            em.add_entity(
-                Entity(1),
-                vec![
-                    Box::new(AnotherTestComponent { prop1: 20 }),
-                    Box::new(EmptyComponent {}),
-                ],
-            );
+            em.add_entity(vec![Box::new(TestComponent { prop1: 10 })]);
+            let entity2 = em.add_entity(vec![
+                Box::new(AnotherTestComponent { prop1: 20 }),
+                Box::new(EmptyComponent {}),
+            ]);
 
             let result = EntityManager::get_entities_with_components(
                 &em.components_to_entities,
@@ -1443,22 +1395,19 @@ mod tests {
             );
 
             assert_eq!(result.len(), 1);
-            assert_eq!(result[0], Entity(1));
+            assert_eq!(result[0], entity2);
         }
 
         #[test]
         fn works_when_one_entity_has_all_provided_components() {
             let mut em = EntityManager::new();
 
-            em.add_entity(Entity(0), vec![Box::new(TestComponent { prop1: 10 })]);
-            em.add_entity(
-                Entity(1),
-                vec![
-                    Box::new(AnotherTestComponent { prop1: 20 }),
-                    Box::new(EmptyComponent {}),
-                    Box::new(OtherTestComponent { prop1: 200 }),
-                ],
-            );
+            em.add_entity(vec![Box::new(TestComponent { prop1: 10 })]);
+            let entity2 = em.add_entity(vec![
+                Box::new(AnotherTestComponent { prop1: 20 }),
+                Box::new(EmptyComponent {}),
+                Box::new(OtherTestComponent { prop1: 200 }),
+            ]);
 
             let result = EntityManager::get_entities_with_components(
                 &em.components_to_entities,
@@ -1466,34 +1415,25 @@ mod tests {
             );
 
             assert_eq!(result.len(), 1);
-            assert!(result.contains(&Entity(1)));
+            assert!(result.contains(&entity2));
         }
 
         #[test]
         fn works_when_multiple_entities_have_all_provided_components() {
             let mut em = EntityManager::new();
 
-            em.add_entity(
-                Entity(0),
-                vec![
-                    Box::new(TestComponent { prop1: 10 }),
-                    Box::new(EmptyComponent {}),
-                ],
-            );
-            em.add_entity(Entity(1), vec![Box::new(TestComponent { prop1: 10 })]);
-            em.add_entity(
-                Entity(2),
-                vec![Box::new(AnotherTestComponent { prop1: 10 })],
-            );
-            em.add_entity(Entity(3), vec![Box::new(EmptyComponent {})]);
-            em.add_entity(
-                Entity(4),
-                vec![
-                    Box::new(TestComponent { prop1: 20 }),
-                    Box::new(EmptyComponent {}),
-                    Box::new(OtherTestComponent { prop1: 200 }),
-                ],
-            );
+            let entity1 = em.add_entity(vec![
+                Box::new(TestComponent { prop1: 10 }),
+                Box::new(EmptyComponent {}),
+            ]);
+            em.add_entity(vec![Box::new(TestComponent { prop1: 10 })]);
+            em.add_entity(vec![Box::new(AnotherTestComponent { prop1: 10 })]);
+            em.add_entity(vec![Box::new(EmptyComponent {})]);
+            let entity2 = em.add_entity(vec![
+                Box::new(TestComponent { prop1: 20 }),
+                Box::new(EmptyComponent {}),
+                Box::new(OtherTestComponent { prop1: 200 }),
+            ]);
 
             let result = EntityManager::get_entities_with_components(
                 &em.components_to_entities,
@@ -1501,8 +1441,8 @@ mod tests {
             );
 
             assert_eq!(result.len(), 2);
-            assert!(result.contains(&Entity(0)));
-            assert!(result.contains(&Entity(4)));
+            assert!(result.contains(&entity1));
+            assert!(result.contains(&entity2));
         }
     }
 
@@ -1526,11 +1466,11 @@ mod tests {
         fn is_empty_for_entity_with_no_components() {
             let mut em = EntityManager::new();
 
-            em.add_entity(Entity(0), vec![]);
+            let entity = em.add_entity(vec![]);
 
             let results = EntityManager::get_components_on_entity(
                 &em.entities_to_components,
-                &Entity(0),
+                &entity,
                 &vec![TestComponent::name()],
             );
 
@@ -1541,11 +1481,11 @@ mod tests {
         fn is_empty_when_no_search_components_are_provided() {
             let mut em = EntityManager::new();
 
-            em.add_entity(Entity(0), vec![Box::new(EmptyComponent {})]);
+            let entity = em.add_entity(vec![Box::new(EmptyComponent {})]);
 
             let results = EntityManager::get_components_on_entity(
                 &em.entities_to_components,
-                &Entity(0),
+                &entity,
                 &vec![],
             );
 
@@ -1556,11 +1496,11 @@ mod tests {
         fn works_when_searching_for_one_component_on_entity_with_that_component() {
             let mut em = EntityManager::new();
 
-            em.add_entity(Entity(0), vec![Box::new(TestComponent { prop1: 10 })]);
+            let entity = em.add_entity(vec![Box::new(TestComponent { prop1: 10 })]);
 
             let results = EntityManager::get_components_on_entity(
                 &em.entities_to_components,
-                &Entity(0),
+                &entity,
                 &vec![TestComponent::name()],
             );
 
@@ -1572,17 +1512,14 @@ mod tests {
         fn works_when_searching_for_one_component_on_entity_with_multiple_components() {
             let mut em = EntityManager::new();
 
-            em.add_entity(
-                Entity(0),
-                vec![
-                    Box::new(TestComponent { prop1: 10 }),
-                    Box::new(EmptyComponent {}),
-                ],
-            );
+            let entity = em.add_entity(vec![
+                Box::new(TestComponent { prop1: 10 }),
+                Box::new(EmptyComponent {}),
+            ]);
 
             let results = EntityManager::get_components_on_entity(
                 &em.entities_to_components,
-                &Entity(0),
+                &entity,
                 &vec![TestComponent::name()],
             );
 
@@ -1594,11 +1531,11 @@ mod tests {
         fn works_when_searching_for_multiple_components_on_entity_with_one_component() {
             let mut em = EntityManager::new();
 
-            em.add_entity(Entity(0), vec![Box::new(TestComponent { prop1: 10 })]);
+            let entity = em.add_entity(vec![Box::new(TestComponent { prop1: 10 })]);
 
             let results = EntityManager::get_components_on_entity(
                 &em.entities_to_components,
-                &Entity(0),
+                &entity,
                 &vec![TestComponent::name()],
             );
 
@@ -1610,19 +1547,16 @@ mod tests {
         fn works_when_searching_for_multiple_components_on_entity_with_multiple_components() {
             let mut em = EntityManager::new();
 
-            em.add_entity(
-                Entity(0),
-                vec![
-                    Box::new(TestComponent { prop1: 10 }),
-                    Box::new(EmptyComponent {}),
-                    Box::new(OtherTestComponent { prop1: 100 }),
-                    Box::new(AnotherTestComponent { prop1: 200 }),
-                ],
-            );
+            let entity = em.add_entity(vec![
+                Box::new(TestComponent { prop1: 10 }),
+                Box::new(EmptyComponent {}),
+                Box::new(OtherTestComponent { prop1: 100 }),
+                Box::new(AnotherTestComponent { prop1: 200 }),
+            ]);
 
             let results = EntityManager::get_components_on_entity(
                 &em.entities_to_components,
-                &Entity(0),
+                &entity,
                 &vec![
                     TestComponent::name(),
                     EmptyComponent::name(),

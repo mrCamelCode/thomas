@@ -7,10 +7,10 @@ use crate::{
     TerminalRendererOptions, TerminalRendererState, TerminalRendererSystems, Time, Timer,
 };
 
-const EVENT_INIT: &str = "init";
-const EVENT_UPDATE: &str = "update";
-const EVENT_AFTER_UPDATE: &str = "after-update";
-const EVENT_CLEANUP: &str = "cleanup";
+pub const EVENT_INIT: &str = "init";
+pub const EVENT_UPDATE: &str = "update";
+pub const EVENT_AFTER_UPDATE: &str = "after-update";
+pub const EVENT_CLEANUP: &str = "cleanup";
 
 #[derive(PartialEq, Eq)]
 pub enum Renderer {
@@ -149,10 +149,8 @@ impl Game {
     fn setup_renderer(mut self, renderer: Renderer) -> Self {
         match renderer {
             Renderer::Terminal(options) => {
-                self.entity_manager.add_entity(
-                    Entity::new(),
-                    vec![Box::new(TerminalRendererState::new(options))],
-                );
+                self.entity_manager
+                    .add_entity(vec![Box::new(TerminalRendererState::new(options))]);
 
                 let (init_system, after_update_system, cleanup_system) =
                     TerminalRendererSystems::new(options).extract_systems();
@@ -193,7 +191,7 @@ impl Game {
                     self.is_playing = false;
                 }
                 GameCommand::AddEntity(components) => {
-                    self.entity_manager.add_entity(Entity::new(), components);
+                    self.entity_manager.add_entity(components);
                 }
                 GameCommand::AddComponentsToEntity(entity, components) => {
                     for component in components {

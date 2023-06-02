@@ -257,7 +257,7 @@ mod tests {
         }
 
         #[test]
-        #[should_panic(expected = "Component EmptyComponent was not present.")]
+        #[should_panic(expected = "Component EmptyComponent was not present, or you're trying to borrow it while it's already mutably borrowed.")]
         fn panics_when_component_is_not_present_in_the_results() {
             let qr = QueryResult {
                 entity: Entity(0),
@@ -298,7 +298,7 @@ mod tests {
         }
 
         #[test]
-        #[should_panic(expected = "Component EmptyComponent was not present.")]
+        #[should_panic(expected = "Component EmptyComponent was not present, or you're trying to borrow it while it's already mutably borrowed.")]
         fn panics_when_component_is_not_present_in_the_results() {
             let qr = QueryResult {
                 entity: Entity(0),

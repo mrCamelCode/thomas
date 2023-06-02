@@ -216,7 +216,11 @@ impl TerminalRendererSystems {
     }
 
     pub(crate) fn extract_systems(self) -> (System, System, System) {
-        (self.init_system, self.after_update_system, self.cleanup_system)
+        (
+            self.init_system,
+            self.after_update_system,
+            self.cleanup_system,
+        )
     }
 }
 
@@ -374,54 +378,39 @@ mod tests {
                 let (_, update_system, _) = TerminalRendererSystems::new(options).extract_systems();
 
                 let mut em = EntityManager::new();
-                em.add_entity(
-                    Entity(1),
-                    vec![Box::new(TerminalTransform {
+                em.add_entity(vec![Box::new(TerminalTransform {
+                    coords: IntCoords2d::new(0, 0),
+                })]);
+                em.add_entity(vec![
+                    Box::new(TerminalRenderer {
+                        display: '^',
+                        layer: Layer::base(),
+                    }),
+                    Box::new(TerminalTransform {
+                        coords: IntCoords2d::new(1, 1),
+                    }),
+                ]);
+                em.add_entity(vec![
+                    Box::new(TerminalRenderer {
+                        display: '5',
+                        layer: Layer::base(),
+                    }),
+                    Box::new(TerminalTransform {
                         coords: IntCoords2d::new(0, 0),
-                    })],
-                );
-                em.add_entity(
-                    Entity(2),
-                    vec![
-                        Box::new(TerminalRenderer {
-                            display: '^',
-                            layer: Layer::base(),
-                        }),
-                        Box::new(TerminalTransform {
-                            coords: IntCoords2d::new(1, 1),
-                        }),
-                    ],
-                );
-                em.add_entity(
-                    Entity(3),
-                    vec![
-                        Box::new(TerminalRenderer {
-                            display: '5',
-                            layer: Layer::base(),
-                        }),
-                        Box::new(TerminalTransform {
-                            coords: IntCoords2d::new(0, 0),
-                        }),
-                    ],
-                );
-                em.add_entity(
-                    Entity(4),
-                    vec![Box::new(TerminalTransform {
-                        coords: IntCoords2d::new(0, 0),
-                    })],
-                );
-                em.add_entity(
-                    Entity(5),
-                    vec![
-                        Box::new(TerminalRenderer {
-                            display: '@',
-                            layer: Layer::base(),
-                        }),
-                        Box::new(TerminalTransform {
-                            coords: IntCoords2d::new(2, 2),
-                        }),
-                    ],
-                );
+                    }),
+                ]);
+                em.add_entity(vec![Box::new(TerminalTransform {
+                    coords: IntCoords2d::new(0, 0),
+                })]);
+                em.add_entity(vec![
+                    Box::new(TerminalRenderer {
+                        display: '@',
+                        layer: Layer::base(),
+                    }),
+                    Box::new(TerminalTransform {
+                        coords: IntCoords2d::new(2, 2),
+                    }),
+                ]);
 
                 let query_results = em.query(&update_system.queries()[0]);
 
@@ -440,54 +429,39 @@ mod tests {
                 let (_, update_system, _) = TerminalRendererSystems::new(options).extract_systems();
 
                 let mut em = EntityManager::new();
-                em.add_entity(
-                    Entity(1),
-                    vec![Box::new(TerminalTransform {
+                em.add_entity(vec![Box::new(TerminalTransform {
+                    coords: IntCoords2d::new(0, 0),
+                })]);
+                em.add_entity(vec![
+                    Box::new(TerminalRenderer {
+                        display: '^',
+                        layer: Layer::new(1),
+                    }),
+                    Box::new(TerminalTransform {
+                        coords: IntCoords2d::new(2, 2),
+                    }),
+                ]);
+                em.add_entity(vec![
+                    Box::new(TerminalRenderer {
+                        display: '5',
+                        layer: Layer::base(),
+                    }),
+                    Box::new(TerminalTransform {
                         coords: IntCoords2d::new(0, 0),
-                    })],
-                );
-                em.add_entity(
-                    Entity(2),
-                    vec![
-                        Box::new(TerminalRenderer {
-                            display: '^',
-                            layer: Layer::new(1),
-                        }),
-                        Box::new(TerminalTransform {
-                            coords: IntCoords2d::new(2, 2),
-                        }),
-                    ],
-                );
-                em.add_entity(
-                    Entity(3),
-                    vec![
-                        Box::new(TerminalRenderer {
-                            display: '5',
-                            layer: Layer::base(),
-                        }),
-                        Box::new(TerminalTransform {
-                            coords: IntCoords2d::new(0, 0),
-                        }),
-                    ],
-                );
-                em.add_entity(
-                    Entity(4),
-                    vec![Box::new(TerminalTransform {
-                        coords: IntCoords2d::new(0, 0),
-                    })],
-                );
-                em.add_entity(
-                    Entity(5),
-                    vec![
-                        Box::new(TerminalRenderer {
-                            display: '@',
-                            layer: Layer::base(),
-                        }),
-                        Box::new(TerminalTransform {
-                            coords: IntCoords2d::new(2, 2),
-                        }),
-                    ],
-                );
+                    }),
+                ]);
+                em.add_entity(vec![Box::new(TerminalTransform {
+                    coords: IntCoords2d::new(0, 0),
+                })]);
+                em.add_entity(vec![
+                    Box::new(TerminalRenderer {
+                        display: '@',
+                        layer: Layer::base(),
+                    }),
+                    Box::new(TerminalTransform {
+                        coords: IntCoords2d::new(2, 2),
+                    }),
+                ]);
 
                 let query_results = em.query(&update_system.queries()[0]);
 
@@ -512,54 +486,39 @@ mod tests {
                 let (_, update_system, _) = TerminalRendererSystems::new(options).extract_systems();
 
                 let mut em = EntityManager::new();
-                em.add_entity(
-                    Entity(1),
-                    vec![Box::new(TerminalTransform {
+                em.add_entity(vec![Box::new(TerminalTransform {
+                    coords: IntCoords2d::new(0, 0),
+                })]);
+                em.add_entity(vec![
+                    Box::new(TerminalRenderer {
+                        display: '^',
+                        layer: Layer::base(),
+                    }),
+                    Box::new(TerminalTransform {
+                        coords: IntCoords2d::new(1, 1),
+                    }),
+                ]);
+                em.add_entity(vec![
+                    Box::new(TerminalRenderer {
+                        display: '5',
+                        layer: Layer::base(),
+                    }),
+                    Box::new(TerminalTransform {
                         coords: IntCoords2d::new(0, 0),
-                    })],
-                );
-                em.add_entity(
-                    Entity(2),
-                    vec![
-                        Box::new(TerminalRenderer {
-                            display: '^',
-                            layer: Layer::base(),
-                        }),
-                        Box::new(TerminalTransform {
-                            coords: IntCoords2d::new(1, 1),
-                        }),
-                    ],
-                );
-                em.add_entity(
-                    Entity(3),
-                    vec![
-                        Box::new(TerminalRenderer {
-                            display: '5',
-                            layer: Layer::base(),
-                        }),
-                        Box::new(TerminalTransform {
-                            coords: IntCoords2d::new(0, 0),
-                        }),
-                    ],
-                );
-                em.add_entity(
-                    Entity(4),
-                    vec![Box::new(TerminalTransform {
-                        coords: IntCoords2d::new(0, 0),
-                    })],
-                );
-                em.add_entity(
-                    Entity(5),
-                    vec![
-                        Box::new(TerminalRenderer {
-                            display: '@',
-                            layer: Layer::base(),
-                        }),
-                        Box::new(TerminalTransform {
-                            coords: IntCoords2d::new(2, 2),
-                        }),
-                    ],
-                );
+                    }),
+                ]);
+                em.add_entity(vec![Box::new(TerminalTransform {
+                    coords: IntCoords2d::new(0, 0),
+                })]);
+                em.add_entity(vec![
+                    Box::new(TerminalRenderer {
+                        display: '@',
+                        layer: Layer::base(),
+                    }),
+                    Box::new(TerminalTransform {
+                        coords: IntCoords2d::new(2, 2),
+                    }),
+                ]);
 
                 let query_results = em.query(&update_system.queries()[0]);
 
@@ -581,54 +540,39 @@ mod tests {
                 let (_, update_system, _) = TerminalRendererSystems::new(options).extract_systems();
 
                 let mut em = EntityManager::new();
-                em.add_entity(
-                    Entity(1),
-                    vec![Box::new(TerminalTransform {
+                em.add_entity(vec![Box::new(TerminalTransform {
+                    coords: IntCoords2d::new(0, 0),
+                })]);
+                em.add_entity(vec![
+                    Box::new(TerminalRenderer {
+                        display: '^',
+                        layer: Layer::new(1),
+                    }),
+                    Box::new(TerminalTransform {
+                        coords: IntCoords2d::new(2, 2),
+                    }),
+                ]);
+                em.add_entity(vec![
+                    Box::new(TerminalRenderer {
+                        display: '5',
+                        layer: Layer::base(),
+                    }),
+                    Box::new(TerminalTransform {
                         coords: IntCoords2d::new(0, 0),
-                    })],
-                );
-                em.add_entity(
-                    Entity(2),
-                    vec![
-                        Box::new(TerminalRenderer {
-                            display: '^',
-                            layer: Layer::new(1),
-                        }),
-                        Box::new(TerminalTransform {
-                            coords: IntCoords2d::new(2, 2),
-                        }),
-                    ],
-                );
-                em.add_entity(
-                    Entity(3),
-                    vec![
-                        Box::new(TerminalRenderer {
-                            display: '5',
-                            layer: Layer::base(),
-                        }),
-                        Box::new(TerminalTransform {
-                            coords: IntCoords2d::new(0, 0),
-                        }),
-                    ],
-                );
-                em.add_entity(
-                    Entity(4),
-                    vec![Box::new(TerminalTransform {
-                        coords: IntCoords2d::new(0, 0),
-                    })],
-                );
-                em.add_entity(
-                    Entity(5),
-                    vec![
-                        Box::new(TerminalRenderer {
-                            display: '@',
-                            layer: Layer::base(),
-                        }),
-                        Box::new(TerminalTransform {
-                            coords: IntCoords2d::new(2, 2),
-                        }),
-                    ],
-                );
+                    }),
+                ]);
+                em.add_entity(vec![Box::new(TerminalTransform {
+                    coords: IntCoords2d::new(0, 0),
+                })]);
+                em.add_entity(vec![
+                    Box::new(TerminalRenderer {
+                        display: '@',
+                        layer: Layer::base(),
+                    }),
+                    Box::new(TerminalTransform {
+                        coords: IntCoords2d::new(2, 2),
+                    }),
+                ]);
 
                 let query_results = em.query(&update_system.queries()[0]);
 
