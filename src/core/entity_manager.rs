@@ -497,6 +497,17 @@ mod tests {
             assert!(component_map.get(AnotherTestComponent::name()).is_some());
             assert_eq!(another_test_component.prop1, 5);
         }
+
+        #[test]
+        fn ids_are_reused_when_available() {
+            let mut em = EntityManager::new();
+            em.available_entity_ids.push(Entity(1000));
+
+            let entity = em.add_entity(vec![]);
+
+            assert_eq!(entity, Entity(1000));
+            assert_eq!(em.available_entity_ids.len(), 0);
+        }
     }
 
     mod test_remove_entity {
@@ -591,6 +602,18 @@ mod tests {
             assert!(component_map.is_none());
             assert_eq!(em.entities_to_components.len(), 0);
             assert_eq!(em.components_to_entities.len(), 0);
+        }
+
+        #[test]
+        fn removing_an_entity_makes_its_id_available() {
+            let mut em = EntityManager::new();
+
+            let entity = em.add_entity(vec![]);
+
+            em.remove_entity(&entity);
+
+            assert_eq!(em.available_entity_ids.len(), 1);
+            assert_eq!(em.available_entity_ids[0], entity);
         }
     }
 
