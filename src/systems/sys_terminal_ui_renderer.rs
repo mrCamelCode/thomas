@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use crate::{
-    Component, GameCommand, IntCoords2d, Layer, Query, QueryResultList, System, SystemExtraArgs,
-    TerminalRenderer, TerminalRendererOptions, TerminalRendererState, TerminalTextCharacter,
-    TerminalTransform, Text, UiAnchor,
+    Alignment, Component, GameCommand, IntCoords2d, Layer, Query, QueryResultList, System,
+    SystemExtraArgs, TerminalRenderer, TerminalRendererOptions, TerminalRendererState,
+    TerminalTextCharacter, TerminalTransform, Text, UiAnchor,
 };
 
 pub struct TerminalUiRendererSystem {
@@ -40,11 +40,26 @@ impl TerminalUiRendererSystem {
                                 .expect("The anchor position can be determined.")
                                 .values();
 
-                            // TODO: Look at the justification and offset to determine the more accurate position of the text.
-                            let starting_position = IntCoords2d::new(anchor_x, anchor_y);
+                            let chars = text.value.chars().collect::<Vec<char>>();
+
+                            let justification_offset = match text.justification {
+                                Alignment::Left => IntCoords2d::zero(),
+                                Alignment::Middle => IntCoords2d::new(
+                                    -((chars.len() / 2) as i64),
+                                    0,
+                                ),
+                                Alignment::Right => IntCoords2d::new(
+                                    -(chars.len() as i64),
+                                    0,
+                                ),
+                            };
+
+                            let starting_position = IntCoords2d::new(anchor_x, anchor_y)
+                                + justification_offset
+                                + text.offset;
 
                             let mut offset = IntCoords2d::zero();
-                            for character in text.value.chars() {
+                            for character in chars {
                                 util.commands().issue(GameCommand::AddEntity(vec![
                                     Box::new(TerminalTextCharacter {}),
                                     Box::new(TerminalRenderer {
@@ -78,19 +93,19 @@ fn wipe_existing_text(text_character_query_results: &QueryResultList, util: &Sys
 }
 
 fn get_anchor_positions(options: &TerminalRendererOptions) -> HashMap<UiAnchor, IntCoords2d> {
-    let (width, height) = (
-        options.screen_resolution.width() as i64,
-        options.screen_resolution.height() as i64,
+    let (zero_indexed_width, zero_indexed_height) = (
+        options.screen_resolution.width() as i64 - 1,
+        options.screen_resolution.height() as i64 - 1,
     );
 
     HashMap::from([
         (UiAnchor::TopLeft, IntCoords2d::new(0, 0)),
-        (UiAnchor::MiddleTop, IntCoords2d::new(width / 2, 0)),
-        (UiAnchor::TopRight, IntCoords2d::new(width, 0)),
-        (UiAnchor::MiddleRight, IntCoords2d::new(width, height / 2)),
-        (UiAnchor::BottomRight, IntCoords2d::new(width, height)),
-        (UiAnchor::MiddleBottom, IntCoords2d::new(width / 2, height)),
-        (UiAnchor::BottomLeft, IntCoords2d::new(0, height)),
-        (UiAnchor::MiddleLeft, IntCoords2d::new(0, height)),
+        (UiAnchor::MiddleTop, IntCoords2d::new(zero_indexed_width / 2, 0)),
+        (UiAnchor::TopRight, IntCoords2d::new(zero_indexed_width, 0)),
+        (UiAnchor::MiddleRight, IntCoords2d::new(zero_indexed_width, zero_indexed_height / 2)),
+        (UiAnchor::BottomRight, IntCoords2d::new(zero_indexed_width, zero_indexed_height)),
+        (UiAnchor::MiddleBottom, IntCoords2d::new(zero_indexed_width / 2, zero_indexed_height)),
+        (UiAnchor::BottomLeft, IntCoords2d::new(0, zero_indexed_height)),
+        (UiAnchor::MiddleLeft, IntCoords2d::new(0, zero_indexed_height)),
     ])
 }
