@@ -1,9 +1,8 @@
-#[derive(Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Dimensions2d {
     height: u64,
     width: u64,
 }
-#[allow(dead_code)]
 impl Dimensions2d {
     pub fn new(height: u64, width: u64) -> Self {
         Dimensions2d { height, width }

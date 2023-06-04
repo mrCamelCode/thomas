@@ -55,6 +55,30 @@ impl Input {
         false
     }
 
+    /// Whether all the provided keys are currently pressed. This version of the method will return `true` even if other keys
+    /// outside the chord are currently being pressed. For an exclusive chord, use `is_chord_pressed_exclusively`.
+    pub fn is_chord_pressed(&self, keycodes: &[&Keycode]) -> bool {
+        keycodes
+            .into_iter()
+            .all(|keycode| self.is_key_pressed(keycode))
+    }
+
+    /// Whether all and only the specified keys are currently pressed. If any keys outside the chord are pressed,
+    /// returns `false`.
+    pub fn is_chord_pressed_exclusively(&self, keycodes: &[&Keycode]) -> bool {
+        self.keylogger
+            .iter()
+            .filter_map(|(keycode, key_state)| {
+                if key_state.current_state == KeyState::Down {
+                    return Some(keycode);
+                }
+
+                None
+            })
+            .all(|pressed_key| keycodes.contains(&pressed_key))
+            && self.is_chord_pressed(keycodes)
+    }
+
     pub(crate) fn update(&mut self) {
         let current_keys = self.device_state.get_keys();
 
