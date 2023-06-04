@@ -380,8 +380,8 @@ mod tests {
             let results = em.query(&Query::new().has::<EmptyComponent>().has::<TestComponent>());
 
             for result in results {
-                let mut bind1 = result.components().get_mut::<EmptyComponent>();
-                let mut bind2 = result.components().get_mut::<TestComponent>();
+                let mut _bind1 = result.components().get_mut::<EmptyComponent>();
+                let mut _bind2 = result.components().get_mut::<TestComponent>();
             }
         }
 
@@ -397,8 +397,8 @@ mod tests {
             let results = em.query(&Query::new().has::<EmptyComponent>());
 
             for result in results {
-                let mut bind1 = result.components().get_mut::<EmptyComponent>();
-                let mut bind2 = result.components().get_mut::<EmptyComponent>();
+                let mut _bind1 = result.components().get_mut::<EmptyComponent>();
+                let mut _bind2 = result.components().get_mut::<EmptyComponent>();
             }
         }
 

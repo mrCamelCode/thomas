@@ -10,9 +10,9 @@ use crossterm::{
 };
 
 use crate::{
-    Component, Dimensions2d, Layer, Matrix, Priority, Query, QueryResultList, System,
-    SystemsGenerator, TerminalRenderer, TerminalTransform, EVENT_AFTER_UPDATE, EVENT_CLEANUP,
-    EVENT_INIT,
+    Component, Dimensions2d, GameCommand, IntCoords2d, Layer, Matrix, Priority, Query,
+    QueryResultList, System, SystemsGenerator, TerminalCamera, TerminalRenderer, TerminalTransform,
+    EVENT_AFTER_UPDATE, EVENT_CLEANUP, EVENT_INIT,
 };
 
 const HORIZONTAL_OUTLINE_DELIMITER: &str = "=";
@@ -39,25 +39,21 @@ impl TerminalRendererState {
     }
 }
 
-pub(crate) struct TerminalRendererSystemsGenerator {
-    options: TerminalRendererOptions,
-}
+pub(crate) struct TerminalRendererSystemsGenerator {}
 impl TerminalRendererSystemsGenerator {
-    pub(crate) fn new(options: TerminalRendererOptions) -> Self {
-        Self { options }
+    pub(crate) fn new() -> Self {
+        Self {}
     }
 }
 impl SystemsGenerator for TerminalRendererSystemsGenerator {
     fn generate(&self) -> Vec<(&'static str, System)> {
-        let options = self.options.clone();
-
         vec![
             (
                 EVENT_INIT,
                 System::new_with_priority(
                     Priority::highest(),
                     vec![Query::new().has::<TerminalRendererState>()],
-                    move |results, _| {
+                    move |results, util| {
                         if let [state_query, ..] = &results[..] {
                             assert!(
                                 state_query.len() == 1,
@@ -117,6 +113,18 @@ impl SystemsGenerator for TerminalRendererSystemsGenerator {
                                 e
                             );
                             }
+
+                            if state.options.include_default_camera {
+                                util.commands().issue(GameCommand::AddEntity(vec![
+                                    Box::new(TerminalCamera {
+                                        field_of_view: state.options.screen_resolution.clone(),
+                                        is_main: true,
+                                    }),
+                                    Box::new(TerminalTransform {
+                                        coords: IntCoords2d::zero(),
+                                    }),
+                                ]))
+                            }
                         }
                     },
                 ),
@@ -128,16 +136,14 @@ impl SystemsGenerator for TerminalRendererSystemsGenerator {
                     vec![
                         Query::new()
                             .has::<TerminalRenderer>()
-                            .has_where::<TerminalTransform>(move |transform_terminal| {
-                                let (x, y) = transform_terminal.coords.values();
-
-                                (x >= 0 && x as u64 <= options.screen_resolution.width())
-                                    && (y >= 0 && y as u64 <= options.screen_resolution.height())
-                            }),
+                            .has::<TerminalTransform>(),
                         Query::new().has::<TerminalRendererState>(),
+                        Query::new()
+                            .has_where::<TerminalCamera>(|camera| camera.is_main)
+                            .has::<TerminalTransform>(),
                     ],
                     move |results, _| {
-                        if let [renderables_query, state_query, ..] = &results[..] {
+                        if let [renderables_query, state_query, camera_query, ..] = &results[..] {
                             let mut state = state_query
                                 .get(0)
                                 .expect(&format!(
@@ -147,50 +153,61 @@ impl SystemsGenerator for TerminalRendererSystemsGenerator {
                                 .components()
                                 .get_mut::<TerminalRendererState>();
 
-                            let new_render_string =
-                                make_render_string(&renderables_query, &state.options);
+                            if let Some(camera_result) = camera_query.get(0) {
+                                let main_camera =
+                                    camera_result.components().get::<TerminalCamera>();
+                                let main_camera_transform =
+                                    camera_result.components().get::<TerminalTransform>();
 
-                            if state.is_initial_render {
-                                if let Err(e) = write!(stdout(), "{}", new_render_string) {
-                                    panic!("Error occurred while trying to write initial render to the terminal: {e}");
-                                }
+                                let new_render_string = make_render_string(
+                                    &*main_camera,
+                                    &*main_camera_transform,
+                                    &renderables_query,
+                                    &state.options,
+                                );
 
-                                state.is_initial_render = false;
-                            } else {
-                                let new_render_lines = new_render_string
-                                    .split(NEWLINE_DELIMITER)
-                                    .collect::<Vec<&str>>();
-                                let prev_render_lines = state
-                                    .prev_render
-                                    .split(NEWLINE_DELIMITER)
-                                    .collect::<Vec<&str>>();
+                                if state.is_initial_render {
+                                    if let Err(e) = write!(stdout(), "{}", new_render_string) {
+                                        panic!("Error occurred while trying to write initial render to the terminal: {e}");
+                                    }
 
-                                for row in 0..new_render_lines.len() {
-                                    if new_render_lines[row] != prev_render_lines[row] {
-                                        if let Err(e) =
-                                            execute!(stdout(), cursor::MoveTo(0, row as u16))
-                                        {
-                                            panic!("Error occurred while trying to move the cursor to position (0, {}): {e}", row as u16);
-                                        }
+                                    state.is_initial_render = false;
+                                } else {
+                                    let new_render_lines = new_render_string
+                                        .split(NEWLINE_DELIMITER)
+                                        .collect::<Vec<&str>>();
+                                    let prev_render_lines = state
+                                        .prev_render
+                                        .split(NEWLINE_DELIMITER)
+                                        .collect::<Vec<&str>>();
 
-                                        if let Err(e) = write!(
-                                            stdout(),
-                                            "{}",
-                                            new_render_lines[row].replace("\r\n", "")
-                                        ) {
-                                            panic!("Error occurred while trying to write the new render to the terminal: {e}");
-                                        }
+                                    for row in 0..new_render_lines.len() {
+                                        if new_render_lines[row] != prev_render_lines[row] {
+                                            if let Err(e) =
+                                                execute!(stdout(), cursor::MoveTo(0, row as u16))
+                                            {
+                                                panic!("Error occurred while trying to move the cursor to position (0, {}): {e}", row as u16);
+                                            }
 
-                                        if let Err(e) =
-                                            execute!(stdout(), Clear(ClearType::UntilNewLine))
-                                        {
-                                            panic!("Error occurred while trying to execute the UntilNewLine clear type: {e}");
+                                            if let Err(e) = write!(
+                                                stdout(),
+                                                "{}",
+                                                new_render_lines[row].replace("\r\n", "")
+                                            ) {
+                                                panic!("Error occurred while trying to write the new render to the terminal: {e}");
+                                            }
+
+                                            if let Err(e) =
+                                                execute!(stdout(), Clear(ClearType::UntilNewLine))
+                                            {
+                                                panic!("Error occurred while trying to execute the UntilNewLine clear type: {e}");
+                                            }
                                         }
                                     }
                                 }
-                            }
 
-                            state.prev_render = new_render_string;
+                                state.prev_render = new_render_string;
+                            }
                         }
                     },
                 ),
@@ -236,44 +253,18 @@ impl SystemsGenerator for TerminalRendererSystemsGenerator {
     }
 }
 
-fn make_render_matrix(
-    renderables_query_result: &QueryResultList,
-    renderer_options: &TerminalRendererOptions,
-) -> TerminalRendererMatrix {
-    let mut render_matrix = TerminalRendererMatrix::new(renderer_options.screen_resolution);
-
-    for result in renderables_query_result {
-        let (TerminalRenderer { display, layer }, coords) = (
-            &*result.components().get::<TerminalRenderer>(),
-            result.components().get::<TerminalTransform>().coords,
-        );
-
-        let (x, y) = (coords.x() as u64, coords.y() as u64);
-
-        if let Some(cell) = render_matrix.get(x, y) {
-            if layer.is_above(&cell.data().layer_of_value)
-                || layer.is_with(&cell.data().layer_of_value)
-            {
-                render_matrix.update_cell_at(
-                    x,
-                    y,
-                    TerminalRendererMatrixCell {
-                        display: *display,
-                        layer_of_value: layer.clone(),
-                    },
-                );
-            }
-        }
-    }
-
-    render_matrix
-}
-
 fn make_render_string(
+    main_camera: &TerminalCamera,
+    main_camera_transform: &TerminalTransform,
     renderables_query_result: &QueryResultList,
     renderer_options: &TerminalRendererOptions,
 ) -> String {
-    let render_matrix = make_render_matrix(renderables_query_result, &renderer_options);
+    let render_matrix = make_render_matrix(
+        main_camera,
+        main_camera_transform,
+        renderables_query_result,
+        &renderer_options,
+    );
 
     let mut render_string = String::new();
 
@@ -303,6 +294,51 @@ fn make_render_string(
     )
 }
 
+fn make_render_matrix(
+    main_camera: &TerminalCamera,
+    main_camera_transform: &TerminalTransform,
+    renderables_query_result: &QueryResultList,
+    renderer_options: &TerminalRendererOptions,
+) -> TerminalRendererMatrix {
+    let mut render_matrix = TerminalRendererMatrix::new(renderer_options.screen_resolution);
+
+    for result in renderables_query_result {
+        let renderable_transform = result.components().get::<TerminalTransform>();
+        let renderable_screen_position = renderable_transform.coords - main_camera_transform.coords;
+
+        let (TerminalRenderer { display, layer }, coords) = (
+            &*result.components().get::<TerminalRenderer>(),
+            renderable_transform.coords,
+        );
+
+        let (x, y) = (renderable_screen_position.x() as u64, renderable_screen_position.y() as u64);
+
+        if is_renderable_visible(
+            main_camera,
+            main_camera_transform,
+            &*renderable_transform,
+            &renderer_options.screen_resolution,
+        ) {
+            if let Some(cell) = render_matrix.get(x, y) {
+                if layer.is_above(&cell.data().layer_of_value)
+                    || layer.is_with(&cell.data().layer_of_value)
+                {
+                    render_matrix.update_cell_at(
+                        x,
+                        y,
+                        TerminalRendererMatrixCell {
+                            display: *display,
+                            layer_of_value: layer.clone(),
+                        },
+                    );
+                }
+            }
+        }
+    }
+
+    render_matrix
+}
+
 fn outline_render_string(
     render_string: String,
     renderer_options: &TerminalRendererOptions,
@@ -326,10 +362,41 @@ fn outline_render_string(
 
     format!("{header}{NEWLINE_DELIMITER}{body}{NEWLINE_DELIMITER}{footer}")
 }
+
+fn is_renderable_visible(
+    main_camera: &TerminalCamera,
+    main_camera_transform: &TerminalTransform,
+    renderable_transform: &TerminalTransform,
+    screen_resolution: &Dimensions2d,
+) -> bool {
+    let renderable_world_position = renderable_transform.coords;
+    let camera_world_position = main_camera_transform.coords;
+    let renderable_screen_position = renderable_world_position - camera_world_position;
+
+    let camera_min_visible_pos = camera_world_position;
+    let camera_max_visible_pos = IntCoords2d::new(
+        camera_world_position.x() + main_camera.field_of_view.width() as i64 - 1,
+        camera_world_position.y() + main_camera.field_of_view.height() as i64 - 1,
+    );
+
+    let is_within_camera_view = (renderable_world_position.x() >= camera_min_visible_pos.x()
+        && renderable_world_position.x() <= camera_max_visible_pos.x())
+        && (renderable_world_position.y() >= camera_min_visible_pos.y()
+            && renderable_world_position.y() <= camera_max_visible_pos.y());
+
+    let is_within_screen_space = (renderable_screen_position.x() >= 0
+        && renderable_screen_position.x() < screen_resolution.width() as i64)
+        && (renderable_screen_position.y() >= 0
+            && renderable_screen_position.y() < screen_resolution.height() as i64);
+
+    is_within_camera_view && is_within_screen_space
+}
+
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct TerminalRendererOptions {
     pub screen_resolution: Dimensions2d,
     pub include_screen_outline: bool,
+    pub include_default_camera: bool,
 }
 
 struct TerminalRendererMatrix {
@@ -385,10 +452,10 @@ mod tests {
                 let options = TerminalRendererOptions {
                     screen_resolution: Dimensions2d::new(3, 3),
                     include_screen_outline: false,
+                    include_default_camera: false,
                 };
 
-                let generated_renderer_systems =
-                    TerminalRendererSystemsGenerator::new(options).generate();
+                let generated_renderer_systems = TerminalRendererSystemsGenerator::new().generate();
 
                 let after_update_system = &generated_renderer_systems
                     .iter()
@@ -433,7 +500,17 @@ mod tests {
 
                 let query_results = em.query(&after_update_system.queries()[0]);
 
-                let result = make_render_string(&query_results, &options);
+                let result = make_render_string(
+                    &TerminalCamera {
+                        field_of_view: Dimensions2d::new(3, 3),
+                        is_main: true,
+                    },
+                    &TerminalTransform {
+                        coords: IntCoords2d::zero(),
+                    },
+                    &query_results,
+                    &options,
+                );
 
                 assert_eq!(result, "\r\n5  \r\n ^ \r\n  @\r\n")
             }
@@ -443,10 +520,10 @@ mod tests {
                 let options = TerminalRendererOptions {
                     screen_resolution: Dimensions2d::new(3, 3),
                     include_screen_outline: false,
+                    include_default_camera: false,
                 };
 
-                let generated_renderer_systems =
-                    TerminalRendererSystemsGenerator::new(options).generate();
+                let generated_renderer_systems = TerminalRendererSystemsGenerator::new().generate();
 
                 let after_update_system = &generated_renderer_systems
                     .iter()
@@ -491,9 +568,87 @@ mod tests {
 
                 let query_results = em.query(&after_update_system.queries()[0]);
 
-                let result = make_render_string(&query_results, &options);
+                let result = make_render_string(
+                    &TerminalCamera {
+                        field_of_view: Dimensions2d::new(3, 3),
+                        is_main: true,
+                    },
+                    &TerminalTransform {
+                        coords: IntCoords2d::zero(),
+                    },
+                    &query_results,
+                    &options,
+                );
 
                 assert_eq!(result, "\r\n5  \r\n   \r\n  ^\r\n")
+            }
+
+            #[test]
+            fn entities_outside_of_the_camera_fov_are_not_rendered() {
+                let options = TerminalRendererOptions {
+                    screen_resolution: Dimensions2d::new(3, 3),
+                    include_screen_outline: false,
+                    include_default_camera: false,
+                };
+
+                let generated_renderer_systems = TerminalRendererSystemsGenerator::new().generate();
+
+                let after_update_system = &generated_renderer_systems
+                    .iter()
+                    .find(|(name, _)| *name == EVENT_AFTER_UPDATE)
+                    .unwrap()
+                    .1;
+
+                let mut em = EntityManager::new();
+                em.add_entity(vec![Box::new(TerminalTransform {
+                    coords: IntCoords2d::new(0, 0),
+                })]);
+                em.add_entity(vec![
+                    Box::new(TerminalRenderer {
+                        display: '^',
+                        layer: Layer::base(),
+                    }),
+                    Box::new(TerminalTransform {
+                        coords: IntCoords2d::new(1, 1),
+                    }),
+                ]);
+                em.add_entity(vec![
+                    Box::new(TerminalRenderer {
+                        display: '5',
+                        layer: Layer::base(),
+                    }),
+                    Box::new(TerminalTransform {
+                        coords: IntCoords2d::new(0, 0),
+                    }),
+                ]);
+                em.add_entity(vec![Box::new(TerminalTransform {
+                    coords: IntCoords2d::new(0, 0),
+                })]);
+                em.add_entity(vec![
+                    Box::new(TerminalRenderer {
+                        display: '@',
+                        layer: Layer::base(),
+                    }),
+                    Box::new(TerminalTransform {
+                        coords: IntCoords2d::new(2, 2),
+                    }),
+                ]);
+
+                let query_results = em.query(&after_update_system.queries()[0]);
+
+                let result = make_render_string(
+                    &TerminalCamera {
+                        field_of_view: Dimensions2d::new(3, 3),
+                        is_main: true,
+                    },
+                    &TerminalTransform {
+                        coords: IntCoords2d::new(2, 1),
+                    },
+                    &query_results,
+                    &options,
+                );
+
+                assert_eq!(result, "\r\n   \r\n@  \r\n   \r\n")
             }
         }
 
@@ -507,10 +662,10 @@ mod tests {
                 let options = TerminalRendererOptions {
                     screen_resolution: Dimensions2d::new(3, 3),
                     include_screen_outline: true,
+                    include_default_camera: false,
                 };
 
-                let generated_renderer_systems =
-                    TerminalRendererSystemsGenerator::new(options).generate();
+                let generated_renderer_systems = TerminalRendererSystemsGenerator::new().generate();
 
                 let after_update_system = &generated_renderer_systems
                     .iter()
@@ -555,7 +710,17 @@ mod tests {
 
                 let query_results = em.query(&after_update_system.queries()[0]);
 
-                let result = make_render_string(&query_results, &options);
+                let result = make_render_string(
+                    &TerminalCamera {
+                        field_of_view: Dimensions2d::new(3, 3),
+                        is_main: true,
+                    },
+                    &TerminalTransform {
+                        coords: IntCoords2d::zero(),
+                    },
+                    &query_results,
+                    &options,
+                );
 
                 assert_eq!(
                     result,
@@ -568,10 +733,10 @@ mod tests {
                 let options = TerminalRendererOptions {
                     screen_resolution: Dimensions2d::new(3, 3),
                     include_screen_outline: true,
+                    include_default_camera: false,
                 };
 
-                let generated_renderer_systems =
-                    TerminalRendererSystemsGenerator::new(options).generate();
+                let generated_renderer_systems = TerminalRendererSystemsGenerator::new().generate();
 
                 let after_update_system = &generated_renderer_systems
                     .iter()
@@ -616,7 +781,17 @@ mod tests {
 
                 let query_results = em.query(&after_update_system.queries()[0]);
 
-                let result = make_render_string(&query_results, &options);
+                let result = make_render_string(
+                    &TerminalCamera {
+                        field_of_view: Dimensions2d::new(3, 3),
+                        is_main: true,
+                    },
+                    &TerminalTransform {
+                        coords: IntCoords2d::zero(),
+                    },
+                    &query_results,
+                    &options,
+                );
 
                 assert_eq!(
                     result,

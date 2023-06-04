@@ -161,8 +161,7 @@ impl Game {
                 self.entity_manager
                     .add_entity(vec![Box::new(TerminalRendererState::new(options))]);
 
-                return self
-                    .add_systems_from_generator(TerminalRendererSystemsGenerator::new(options));
+                return self.add_systems_from_generator(TerminalRendererSystemsGenerator::new());
             }
         }
     }
