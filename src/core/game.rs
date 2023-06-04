@@ -9,6 +9,7 @@ use crate::{
 };
 
 pub const EVENT_INIT: &str = "init";
+pub const EVENT_BEFORE_UPDATE: &str = "before-update";
 pub const EVENT_UPDATE: &str = "update";
 pub const EVENT_AFTER_UPDATE: &str = "after-update";
 pub const EVENT_CLEANUP: &str = "cleanup";
@@ -100,10 +101,13 @@ impl Game {
 
             self.update_services();
 
-            self.trigger_event(EVENT_UPDATE, &extra_args);
-            self.trigger_event(EVENT_AFTER_UPDATE, &extra_args);
+            self.trigger_event(EVENT_BEFORE_UPDATE, &extra_args);
 
             self.process_command_queue(Rc::clone(&commands));
+            self.trigger_event(EVENT_UPDATE, &extra_args);
+            self.process_command_queue(Rc::clone(&commands));
+
+            self.trigger_event(EVENT_AFTER_UPDATE, &extra_args);
 
             self.wait_for_frame();
         }
