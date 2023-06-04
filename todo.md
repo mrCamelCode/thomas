@@ -1,4 +1,3 @@
 # TODO 
-- I don't love the Query::include stuff. Maybe just refactor systems to be able to execute multiple queries? That essentially what the inclusions are doing, just without as many features.
-- Collision system
-- UI system
+- Currently, the UI is in world coordinates. I'd like it so UI can be added that's given in screen coordinates, so if the
+main camera is moving around in the world the text stays in the same screen position.
