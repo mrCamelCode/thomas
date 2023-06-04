@@ -306,12 +306,12 @@ fn make_render_matrix(
         let renderable_transform = result.components().get::<TerminalTransform>();
         let renderable_screen_position = renderable_transform.coords - main_camera_transform.coords;
 
-        let (TerminalRenderer { display, layer }, coords) = (
-            &*result.components().get::<TerminalRenderer>(),
-            renderable_transform.coords,
-        );
+        let TerminalRenderer { display, layer } = &*result.components().get::<TerminalRenderer>();
 
-        let (x, y) = (renderable_screen_position.x() as u64, renderable_screen_position.y() as u64);
+        let (x, y) = (
+            renderable_screen_position.x() as u64,
+            renderable_screen_position.y() as u64,
+        );
 
         if is_renderable_visible(
             main_camera,
