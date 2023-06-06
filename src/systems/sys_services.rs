@@ -1,6 +1,6 @@
 use crate::{
-    GameCommand, Input, Priority, Query, System, SystemsGenerator, Time, EVENT_BEFORE_UPDATE,
-    EVENT_INIT, EVENT_AFTER_UPDATE,
+    GameCommand, Input, Priority, Query, System, SystemsGenerator, Time, EVENT_AFTER_UPDATE,
+    EVENT_BEFORE_UPDATE, EVENT_INIT,
 };
 
 pub struct ServicesSystemsGenerator {}
@@ -22,17 +22,25 @@ impl SystemsGenerator for ServicesSystemsGenerator {
                 }),
             ),
             (
+                EVENT_BEFORE_UPDATE,
+                System::new_with_priority(
+                    Priority::highest(),
+                    vec![Query::new().has::<Input>()],
+                    |results, _| {
+                        if let [input_results, ..] = &results[..] {
+                            input_results.get_only_mut::<Input>().update();
+                        }
+                    },
+                ),
+            ),
+            (
                 EVENT_AFTER_UPDATE,
                 System::new_with_priority(
                     Priority::lowest(),
-                    vec![Query::new().has::<Time>(), Query::new().has::<Input>()],
+                    vec![Query::new().has::<Time>()],
                     |results, _| {
-                        if let [time_results, input_results, ..] = &results[..] {
-                            let mut time = time_results.get_only_mut::<Time>();
-                            let mut input = input_results.get_only_mut::<Input>();
-
-                            time.update();
-                            input.update();
+                        if let [time_results, ..] = &results[..] {
+                            time_results.get_only_mut::<Time>().update();
                         }
                     },
                 ),
