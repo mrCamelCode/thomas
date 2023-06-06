@@ -1,4 +1,7 @@
-use std::ops::Deref;
+use std::{
+    cell::{Ref, RefMut},
+    ops::Deref,
+};
 
 use crate::{Component, Entity, StoredComponentList};
 
@@ -90,6 +93,30 @@ impl QueryResultList {
 
     pub fn matches(&self) -> &Vec<QueryResult> {
         &self.matches
+    }
+
+    pub fn get_only<T: Component + 'static>(&self) -> Ref<T> {
+        self[0].components().get::<T>()
+    }
+
+    pub fn get_only_mut<T: Component + 'static>(&self) -> RefMut<T> {
+        self[0].components().get_mut::<T>()
+    }
+
+    pub fn try_get_only<T: Component + 'static>(&self) -> Option<Ref<T>> {
+        if let Some(query_match) = self.get(0) {
+            return query_match.components().try_get::<T>();
+        }
+
+        None
+    }
+
+    pub fn try_get_only_mut<T: Component + 'static>(&self) -> Option<RefMut<T>> {
+        if let Some(query_match) = self.get(0) {
+            return query_match.components().try_get_mut::<T>();
+        }
+
+        None
     }
 }
 impl IntoIterator for QueryResultList {
@@ -257,7 +284,9 @@ mod tests {
         }
 
         #[test]
-        #[should_panic(expected = "Component EmptyComponent was not present, or you're trying to borrow it while it's already mutably borrowed.")]
+        #[should_panic(
+            expected = "Component EmptyComponent was not present, or you're trying to borrow it while it's already mutably borrowed."
+        )]
         fn panics_when_component_is_not_present_in_the_results() {
             let qr = QueryResult {
                 entity: Entity(0),
@@ -298,7 +327,9 @@ mod tests {
         }
 
         #[test]
-        #[should_panic(expected = "Component EmptyComponent was not present, or you're trying to borrow it while it's already mutably borrowed.")]
+        #[should_panic(
+            expected = "Component EmptyComponent was not present, or you're trying to borrow it while it's already mutably borrowed."
+        )]
         fn panics_when_component_is_not_present_in_the_results() {
             let qr = QueryResult {
                 entity: Entity(0),

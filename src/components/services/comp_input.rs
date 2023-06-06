@@ -1,5 +1,8 @@
-use device_query::{DeviceQuery, DeviceState, Keycode};
+use crate::Component;
+
 use std::collections::HashMap;
+
+use device_query::{DeviceQuery, DeviceState, Keycode};
 
 #[derive(Clone, PartialEq)]
 enum KeyState {
@@ -13,6 +16,7 @@ struct KeyStateData {
     current_state: KeyState,
 }
 
+#[derive(Component)]
 pub struct Input {
     keylogger: HashMap<Keycode, KeyStateData>,
     device_state: DeviceState,

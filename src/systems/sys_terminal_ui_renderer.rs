@@ -1,9 +1,9 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 
 use crate::{
-    Alignment, Component, GameCommand, IntCoords2d, Layer, Query, QueryResultList, System,
-    SystemExtraArgs, SystemsGenerator, TerminalRenderer, TerminalRendererOptions,
-    TerminalRendererState, TerminalTextCharacter, TerminalTransform, Text, UiAnchor, EVENT_UPDATE,
+    Alignment, Component, GameCommand, GameCommandsArg, IntCoords2d, Layer, Query, QueryResultList,
+    System, SystemsGenerator, TerminalRenderer, TerminalRendererOptions, TerminalRendererState,
+    TerminalTextCharacter, TerminalTransform, Text, UiAnchor, EVENT_UPDATE,
 };
 
 pub struct TerminalUiRendererSystemsGenerator {}
@@ -24,7 +24,7 @@ impl SystemsGenerator for TerminalUiRendererSystemsGenerator {
                         .has::<TerminalTextCharacter>()
                         .has::<TerminalRenderer>(),
                 ],
-                |results, util| {
+                |results, commands| {
                     if let [text_query, state_query, drawn_text_query, ..] = &results[..] {
                         let renderer_state = state_query
                             .get(0)
@@ -34,7 +34,7 @@ impl SystemsGenerator for TerminalUiRendererSystemsGenerator {
 
                         let anchor_positions = get_anchor_positions(&renderer_state.options);
 
-                        wipe_existing_text(drawn_text_query, util);
+                        wipe_existing_text(drawn_text_query, Rc::clone(&commands));
 
                         for text_result in text_query {
                             let text = text_result.components().get::<Text>();
@@ -60,7 +60,7 @@ impl SystemsGenerator for TerminalUiRendererSystemsGenerator {
 
                             let mut offset = IntCoords2d::zero();
                             for character in chars {
-                                util.commands().issue(GameCommand::AddEntity(vec![
+                                commands.borrow_mut().issue(GameCommand::AddEntity(vec![
                                     Box::new(TerminalTextCharacter {}),
                                     Box::new(TerminalRenderer {
                                         display: character,
@@ -81,9 +81,10 @@ impl SystemsGenerator for TerminalUiRendererSystemsGenerator {
     }
 }
 
-fn wipe_existing_text(text_character_query_results: &QueryResultList, util: &SystemExtraArgs) {
+fn wipe_existing_text(text_character_query_results: &QueryResultList, commands: GameCommandsArg) {
     for text_character in text_character_query_results {
-        util.commands()
+        commands
+            .borrow_mut()
             .issue(GameCommand::DestroyEntity(*text_character.entity()));
     }
 }

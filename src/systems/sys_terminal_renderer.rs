@@ -53,7 +53,7 @@ impl SystemsGenerator for TerminalRendererSystemsGenerator {
                 System::new_with_priority(
                     Priority::highest(),
                     vec![Query::new().has::<TerminalRendererState>()],
-                    move |results, util| {
+                    move |results, commands| {
                         if let [state_query, ..] = &results[..] {
                             assert!(
                                 state_query.len() == 1,
@@ -115,7 +115,7 @@ impl SystemsGenerator for TerminalRendererSystemsGenerator {
                             }
 
                             if state.options.include_default_camera {
-                                util.commands().issue(GameCommand::AddEntity(vec![
+                                commands.borrow_mut().issue(GameCommand::AddEntity(vec![
                                     Box::new(TerminalCamera {
                                         field_of_view: state.options.screen_resolution.clone(),
                                         is_main: true,
@@ -538,7 +538,7 @@ mod tests {
                 em.add_entity(vec![
                     Box::new(TerminalRenderer {
                         display: '^',
-                        layer: Layer::new(1),
+                        layer: Layer(1),
                     }),
                     Box::new(TerminalTransform {
                         coords: IntCoords2d::new(2, 2),
@@ -751,7 +751,7 @@ mod tests {
                 em.add_entity(vec![
                     Box::new(TerminalRenderer {
                         display: '^',
-                        layer: Layer::new(1),
+                        layer: Layer(1),
                     }),
                     Box::new(TerminalTransform {
                         coords: IntCoords2d::new(2, 2),

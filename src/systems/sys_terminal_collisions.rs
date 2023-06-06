@@ -1,7 +1,7 @@
 use std::{cell::Ref, collections::HashMap};
 
 use crate::{
-    Entity, GameCommand, IntCoords2d, Query, QueryResultList, System, SystemExtraArgs,
+    Entity, GameCommand, GameCommandsArg, IntCoords2d, Query, QueryResultList, System,
     SystemsGenerator, TerminalCollider, TerminalCollision, TerminalTransform, EVENT_AFTER_UPDATE,
     EVENT_BEFORE_UPDATE,
 };
@@ -35,7 +35,7 @@ impl SystemsGenerator for TerminalCollisionsSystemsGenerator {
     }
 }
 
-fn detect_collisions(results: Vec<QueryResultList>, util: &SystemExtraArgs) {
+fn detect_collisions(results: Vec<QueryResultList>, commands: GameCommandsArg) {
     if let [bodies_query, ..] = &results[..] {
         let mut used_coords: HashMap<String, Vec<(&Entity, Ref<TerminalCollider>)>> =
             HashMap::new();
@@ -49,11 +49,11 @@ fn detect_collisions(results: Vec<QueryResultList>, util: &SystemExtraArgs) {
             if let Some(entity_list) = used_coords.get_mut(&hash_string) {
                 if !entity_list.is_empty() {
                     for (other_entity, other_collider) in &mut *entity_list {
-                        util.commands().issue(GameCommand::AddEntity(vec![Box::new(
-                            TerminalCollision {
+                        commands
+                            .borrow_mut()
+                            .issue(GameCommand::AddEntity(vec![Box::new(TerminalCollision {
                                 bodies: [(**other_entity, **other_collider), (*entity, *collider)],
-                            },
-                        )]));
+                            })]));
                     }
 
                     entity_list.push((entity, collider));
@@ -65,10 +65,11 @@ fn detect_collisions(results: Vec<QueryResultList>, util: &SystemExtraArgs) {
     }
 }
 
-fn cleanup_collisions(results: Vec<QueryResultList>, util: &SystemExtraArgs) {
+fn cleanup_collisions(results: Vec<QueryResultList>, commands: GameCommandsArg) {
     if let [collision_query, ..] = &results[..] {
         for collision_result in collision_query {
-            util.commands()
+            commands
+                .borrow_mut()
                 .issue(GameCommand::DestroyEntity(*collision_result.entity()));
         }
     }

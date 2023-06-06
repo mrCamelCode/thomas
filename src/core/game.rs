@@ -3,10 +3,12 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc, thread, time::Duration};
 use device_query::Keycode;
 
 use crate::{
-    Component, CustomExtraArgs, Entity, EntityManager, Input, System, SystemExtraArgs,
+    Component, Entity, EntityManager, Input, Query, ServicesSystemsGenerator, System,
     SystemsGenerator, TerminalRendererOptions, TerminalRendererState,
-    TerminalRendererSystemsGenerator, Time, Timer,
+    TerminalRendererSystemsGenerator, Timer,
 };
+
+pub type GameCommandsArg = Rc<RefCell<GameCommandQueue>>;
 
 pub const EVENT_INIT: &str = "init";
 pub const EVENT_BEFORE_UPDATE: &str = "before-update";
@@ -28,8 +30,6 @@ pub struct Game {
     entity_manager: EntityManager,
     events_to_systems: HashMap<&'static str, Vec<System>>,
     is_playing: bool,
-    time: Rc<RefCell<Time>>,
-    input: Rc<RefCell<Input>>,
     options: GameOptions,
     frame_timer: Timer,
 }
@@ -39,8 +39,6 @@ impl Game {
             entity_manager: EntityManager::new(),
             events_to_systems: HashMap::new(),
             is_playing: false,
-            time: Rc::new(RefCell::new(Time::new())),
-            input: Rc::new(RefCell::new(Input::new())),
             options,
             frame_timer: Timer::new(),
         }
@@ -52,10 +50,6 @@ impl Game {
 
     pub fn add_update_system(self, system: System) -> Self {
         self.add_system(EVENT_UPDATE, system)
-    }
-
-    pub fn add_after_update_system(self, system: System) -> Self {
-        self.add_system(EVENT_AFTER_UPDATE, system)
     }
 
     pub fn add_cleanup_system(self, system: System) -> Self {
@@ -92,27 +86,21 @@ impl Game {
 
         self.is_playing = true;
 
-        let extra_args = self.make_extra_args(&commands, vec![]);
-
-        self.trigger_event(EVENT_INIT, &extra_args);
+        self.trigger_event(EVENT_INIT, Rc::clone(&commands));
 
         while self.is_playing {
             self.frame_timer.restart();
 
-            self.update_services();
+            self.trigger_event(EVENT_BEFORE_UPDATE, Rc::clone(&commands));
 
-            self.trigger_event(EVENT_BEFORE_UPDATE, &extra_args);
+            self.trigger_event(EVENT_UPDATE, Rc::clone(&commands));
 
-            self.process_command_queue(Rc::clone(&commands));
-            self.trigger_event(EVENT_UPDATE, &extra_args);
-            self.process_command_queue(Rc::clone(&commands));
-
-            self.trigger_event(EVENT_AFTER_UPDATE, &extra_args);
+            self.trigger_event(EVENT_AFTER_UPDATE, Rc::clone(&commands));
 
             self.wait_for_frame();
         }
 
-        self.trigger_event(EVENT_CLEANUP, &extra_args);
+        self.trigger_event(EVENT_CLEANUP, Rc::clone(&commands));
     }
 
     fn wait_for_frame(&self) {
@@ -122,17 +110,7 @@ impl Game {
             0
         };
 
-        let elapsed_millis = self.frame_timer.elapsed_millis();
-        if elapsed_millis < minimum_frame_time as u128 {
-            thread::sleep(Duration::from_millis(
-                (minimum_frame_time as u128 - elapsed_millis) as u64,
-            ));
-        }
-    }
-
-    fn update_services(&mut self) {
-        self.time.borrow_mut().update();
-        self.input.borrow_mut().update();
+        while self.frame_timer.elapsed_millis() < minimum_frame_time as u128 {}
     }
 
     fn sort_systems_by_priority(&mut self) {
@@ -141,7 +119,7 @@ impl Game {
         }
     }
 
-    fn trigger_event(&self, event_name: &'static str, extra_args: &SystemExtraArgs) {
+    fn trigger_event(&mut self, event_name: &'static str, commands: GameCommandsArg) {
         if let Some(system_list) = self.events_to_systems.get(event_name) {
             for system in system_list {
                 let queries_results = system
@@ -150,8 +128,10 @@ impl Game {
                     .map(|query| self.entity_manager.query(query))
                     .collect();
 
-                system.operator()(queries_results, extra_args);
+                system.operator()(queries_results, Rc::clone(&commands));
             }
+
+            self.process_command_queue(commands);
         }
     }
 
@@ -168,24 +148,36 @@ impl Game {
 
     fn setup_builtin_systems(mut self) -> Self {
         if self.options.press_escape_to_quit {
-            self = self.add_update_system(System::new(vec![], |_, util| {
-                if util.input().is_key_down(&Keycode::Escape) {
-                    util.commands().issue(GameCommand::Quit);
-                }
-            }));
+            self = self.add_update_system(System::new(
+                vec![Query::new().has::<Input>()],
+                |results, commands| {
+                    if let [input_results, ..] = &results[..] {
+                        let input = input_results.get_only::<Input>();
+
+                        if input.is_key_down(&Keycode::Escape) {
+                            commands.borrow_mut().issue(GameCommand::Quit);
+                        }
+                    }
+                },
+            ));
         }
 
-        self.add_update_system(System::new(vec![], |_, util| {
-            if util
-                .input()
-                .is_chord_pressed_exclusively(&[&Keycode::LControl, &Keycode::C])
-            {
-                util.commands().issue(GameCommand::Quit);
-            }
-        }))
+        self.add_update_system(System::new(
+            vec![Query::new().has::<Input>()],
+            |results, commands| {
+                if let [input_results, ..] = &results[..] {
+                    let input = input_results.get_only::<Input>();
+
+                    if input.is_chord_pressed_exclusively(&[&Keycode::LControl, &Keycode::C]) {
+                        commands.borrow_mut().issue(GameCommand::Quit);
+                    }
+                }
+            },
+        ))
+        .add_systems_from_generator(ServicesSystemsGenerator::new())
     }
 
-    fn process_command_queue(&mut self, commands: Rc<RefCell<GameCommandQueue>>) {
+    fn process_command_queue(&mut self, commands: GameCommandsArg) {
         let old_commands = commands.replace(GameCommandQueue::new());
 
         for command in old_commands {
@@ -208,24 +200,8 @@ impl Game {
                 GameCommand::RemoveComponentFromEntity(entity, component_name) => self
                     .entity_manager
                     .remove_component_from_entity(&entity, component_name),
-                GameCommand::TriggerEvent(event_name, custom_args) => {
-                    self.trigger_event(event_name, &self.make_extra_args(&commands, custom_args));
-                }
             }
         }
-    }
-
-    fn make_extra_args(
-        &self,
-        commands: &Rc<RefCell<GameCommandQueue>>,
-        custom_pairs: CustomExtraArgs,
-    ) -> SystemExtraArgs {
-        SystemExtraArgs::new(
-            Rc::clone(commands),
-            Rc::clone(&self.input),
-            Rc::clone(&self.time),
-            custom_pairs,
-        )
     }
 }
 
@@ -235,7 +211,6 @@ pub enum GameCommand {
     AddComponentsToEntity(Entity, Vec<Box<dyn Component>>),
     RemoveComponentFromEntity(Entity, &'static str),
     DestroyEntity(Entity),
-    TriggerEvent(&'static str, CustomExtraArgs),
 }
 
 pub struct GameCommandQueue {
@@ -401,7 +376,7 @@ mod tests {
             static COUNTER_1: AtomicU8 = AtomicU8::new(0);
             static COUNTER_2: AtomicU8 = AtomicU8::new(0);
 
-            let game = Game::new(GameOptions {
+            let mut game = Game::new(GameOptions {
                 press_escape_to_quit: false,
                 max_frame_rate: 5,
             })
@@ -418,60 +393,28 @@ mod tests {
                 }),
             );
 
-            game.trigger_event(
-                EVENT_1,
-                &game.make_extra_args(&Rc::new(RefCell::new(GameCommandQueue::new())), vec![]),
-            );
+            game.trigger_event(EVENT_1, Rc::new(RefCell::new(GameCommandQueue::new())));
 
             assert_eq!(COUNTER_1.fetch_add(0, Ordering::Relaxed), 2);
             assert_eq!(COUNTER_2.fetch_add(0, Ordering::Relaxed), 5);
         }
 
         #[test]
-        fn systems_have_access_to_builtin_extra_args() {
-            let game = Game::new(GameOptions {
+        fn systems_have_access_to_commands() {
+            let mut game = Game::new(GameOptions {
                 press_escape_to_quit: false,
                 max_frame_rate: 5,
             })
             .add_system(
                 EVENT_1,
-                System::new(vec![], |_, args| {
-                    // These will panic if any fail.
-                    args.commands();
-                    args.input();
-                    args.time();
+                System::new(vec![], |_, commands| {
+                    commands.borrow_mut().issue(GameCommand::Quit);
+
+                    assert_eq!(commands.borrow().queue.len(), 1);
                 }),
             );
 
-            game.trigger_event(
-                EVENT_1,
-                &game.make_extra_args(&Rc::new(RefCell::new(GameCommandQueue::new())), vec![]),
-            );
-        }
-
-        #[test]
-        fn systems_have_access_to_custom_extra_args() {
-            let game = Game::new(GameOptions {
-                press_escape_to_quit: false,
-                max_frame_rate: 5,
-            })
-            .add_system(
-                EVENT_1,
-                System::new(vec![], |_, args| {
-                    let custom = args.try_get::<i32>("custom");
-
-                    assert!(custom.is_some());
-                    assert_eq!(*custom.unwrap(), 10);
-                }),
-            );
-
-            game.trigger_event(
-                EVENT_1,
-                &game.make_extra_args(
-                    &Rc::new(RefCell::new(GameCommandQueue::new())),
-                    vec![("custom", Box::new(10))],
-                ),
-            );
+            game.trigger_event(EVENT_1, Rc::new(RefCell::new(GameCommandQueue::new())));
         }
     }
 

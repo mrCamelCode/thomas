@@ -1,10 +1,6 @@
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
-pub struct Layer(i32);
+pub struct Layer(pub i32);
 impl Layer {
-    pub fn new(value: i32) -> Self {
-        Self(value)
-    }
-
     pub fn base() -> Self {
         Self(0)
     }
@@ -55,7 +51,7 @@ mod tests {
 
         #[test]
         fn it_produces_a_value_above_the_provided_layer() {
-            let source = Layer::new(3);
+            let source = Layer(3);
 
             assert!(Layer::above(&source).is_above(&source));
         }
@@ -66,7 +62,7 @@ mod tests {
 
         #[test]
         fn it_produces_a_value_below_the_provided_layer() {
-            let source = Layer::new(3);
+            let source = Layer(3);
 
             assert!(Layer::below(&source).is_below(&source));
         }
@@ -77,7 +73,7 @@ mod tests {
 
         #[test]
         fn it_produces_a_value_with_the_provided_layer() {
-            let source = Layer::new(3);
+            let source = Layer(3);
 
             assert!(Layer::with(&source).is_with(&source));
         }
@@ -88,16 +84,16 @@ mod tests {
 
         #[test]
         fn returns_true_when_source_is_above_other() {
-            let layer = Layer::new(2);
+            let layer = Layer(2);
 
-            assert!(layer.is_above(&Layer::new(1)));
+            assert!(layer.is_above(&Layer(1)));
         }
 
         #[test]
         fn returns_false_when_source_is_not_above_other() {
-            let layer = Layer::new(0);
+            let layer = Layer(0);
 
-            assert!(!layer.is_above(&Layer::new(2)));
+            assert!(!layer.is_above(&Layer(2)));
         }
     }
 
@@ -106,16 +102,16 @@ mod tests {
 
         #[test]
         fn returns_true_when_source_is_below_other() {
-            let layer = Layer::new(2);
+            let layer = Layer(2);
 
-            assert!(!layer.is_below(&Layer::new(1)));
+            assert!(!layer.is_below(&Layer(1)));
         }
 
         #[test]
         fn returns_false_when_source_is_not_below_other() {
-            let layer = Layer::new(0);
+            let layer = Layer(0);
 
-            assert!(layer.is_below(&Layer::new(2)));
+            assert!(layer.is_below(&Layer(2)));
         }
     }
 
@@ -124,23 +120,23 @@ mod tests {
 
         #[test]
         fn returns_false_when_source_is_above_other() {
-            let layer = Layer::new(2);
+            let layer = Layer(2);
 
-            assert!(!layer.is_with(&Layer::new(1)));
+            assert!(!layer.is_with(&Layer(1)));
         }
 
         #[test]
         fn returns_false_when_source_is_below_other() {
-            let layer = Layer::new(0);
+            let layer = Layer(0);
 
-            assert!(!layer.is_with(&Layer::new(2)));
+            assert!(!layer.is_with(&Layer(2)));
         }
 
         #[test]
         fn returns_true_when_source_with_other() {
-            let layer = Layer::new(3);
+            let layer = Layer(3);
 
-            assert!(layer.is_with(&Layer::new(3)));
+            assert!(layer.is_with(&Layer(3)));
         }
     }
 }

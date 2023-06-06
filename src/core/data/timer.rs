@@ -1,25 +1,5 @@
 use std::time::Instant;
 
-pub struct Time {
-    last_frame_time: Instant,
-}
-impl Time {
-    pub fn new() -> Self {
-        Time {
-            last_frame_time: Instant::now(),
-        }
-    }
-
-    /// The time in milliseconds that's passed since the last update.
-    pub fn delta_time(&self) -> u128 {
-        self.last_frame_time.elapsed().as_millis()
-    }
-
-    pub(crate) fn update(&mut self) {
-        self.last_frame_time = Instant::now();
-    }
-}
-
 #[derive(Clone)]
 pub struct Timer {
     start_time: Instant,
@@ -30,6 +10,13 @@ impl Timer {
         Self {
             start_time: Instant::now(),
             is_running: false,
+        }
+    }
+
+    pub fn start_new() -> Self {
+        Self {
+            start_time: Instant::now(),
+            is_running: true,
         }
     }
 
@@ -68,27 +55,6 @@ impl Timer {
     }
 
     pub fn is_running(&self) -> bool {
-      self.is_running
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    mod delta_time {
-        use super::*;
-        use std::{thread, time::Duration};
-
-        #[test]
-        fn has_difference_after_elapsed_time() {
-            let mut time = Time::new();
-
-            time.update();
-
-            thread::sleep(Duration::from_millis(5));
-
-            assert!(time.delta_time() >= 5);
-        }
+        self.is_running
     }
 }
