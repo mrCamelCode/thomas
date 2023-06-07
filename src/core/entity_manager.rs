@@ -1,6 +1,7 @@
 use std::{
     cell::{Ref, RefCell, RefMut},
-    collections::{BTreeSet, HashMap},
+    collections::{HashMap, HashSet},
+    hash::Hash,
     rc::Rc,
 };
 
@@ -8,7 +9,7 @@ use crate::{Component, ComponentQueryData, Entity, Query, QueryResult, QueryResu
 
 pub type StoredComponent = Rc<RefCell<Box<dyn Component>>>;
 type EntitiesToComponents = HashMap<Entity, HashMap<String, StoredComponent>>;
-type ComponentsToEntities = HashMap<String, BTreeSet<Entity>>;
+type ComponentsToEntities = HashMap<String, HashSet<Entity>>;
 
 pub struct StoredComponentList {
     components: Vec<StoredComponent>,
@@ -108,7 +109,7 @@ impl EntityManager {
                     entity_set.insert(entity);
                 }
             } else {
-                let mut entity_set = BTreeSet::new();
+                let mut entity_set = HashSet::new();
                 entity_set.insert(entity);
 
                 self.components_to_entities
@@ -157,7 +158,7 @@ impl EntityManager {
                 if let Some(entity_set) = self.components_to_entities.get_mut(component_name) {
                     entity_set.insert(*entity);
                 } else {
-                    let mut entity_set = BTreeSet::new();
+                    let mut entity_set = HashSet::new();
                     entity_set.insert(*entity);
 
                     self.components_to_entities
@@ -326,8 +327,8 @@ fn entity_has_component(
     false
 }
 
-fn intersection<T: Ord>(vectors: &Vec<Vec<T>>) -> Vec<&T> {
-    let mut values_tracker: BTreeSet<&T> = BTreeSet::new();
+fn intersection<T: Hash + Eq + PartialEq>(vectors: &Vec<Vec<T>>) -> Vec<&T> {
+    let mut values_tracker: HashSet<&T> = HashSet::new();
     let mut intersecting_values = vec![];
 
     for values_vector in vectors {
@@ -519,7 +520,7 @@ mod tests {
 
             em.components_to_entities.insert(
                 TestComponent::name().to_string(),
-                BTreeSet::from([Entity(1)]),
+                HashSet::from([Entity(1)]),
             );
             em.entities_to_components.insert(
                 Entity(1),
@@ -563,7 +564,7 @@ mod tests {
 
             em.components_to_entities.insert(
                 TestComponent::name().to_string(),
-                BTreeSet::from([Entity(1)]),
+                HashSet::from([Entity(1)]),
             );
             em.entities_to_components.insert(
                 Entity(1),
@@ -648,7 +649,7 @@ mod tests {
             );
             em.components_to_entities.insert(
                 TestComponent::name().to_string(),
-                BTreeSet::from([Entity(0)]),
+                HashSet::from([Entity(0)]),
             );
 
             em.add_component_to_entity(
@@ -689,7 +690,7 @@ mod tests {
             );
             em.components_to_entities.insert(
                 TestComponent::name().to_string(),
-                BTreeSet::from([Entity(0)]),
+                HashSet::from([Entity(0)]),
             );
 
             em.add_component_to_entity(
@@ -734,7 +735,7 @@ mod tests {
             );
             em.components_to_entities.insert(
                 TestComponent::name().to_string(),
-                BTreeSet::from([Entity(0)]),
+                HashSet::from([Entity(0)]),
             );
 
             em.remove_component_from_entity(&Entity(0), OtherTestComponent::name());
@@ -763,7 +764,7 @@ mod tests {
             );
             em.components_to_entities.insert(
                 TestComponent::name().to_string(),
-                BTreeSet::from([Entity(0)]),
+                HashSet::from([Entity(0)]),
             );
 
             em.remove_component_from_entity(&Entity(1), TestComponent::name());
@@ -792,7 +793,7 @@ mod tests {
             );
             em.components_to_entities.insert(
                 TestComponent::name().to_string(),
-                BTreeSet::from([Entity(0)]),
+                HashSet::from([Entity(0)]),
             );
 
             em.remove_component_from_entity(&Entity(0), TestComponent::name());
