@@ -1,5 +1,6 @@
 use std::ops::Deref;
 
+/// A representation of how important something is relative to something else.
 pub struct Priority {
     value: u128,
 }

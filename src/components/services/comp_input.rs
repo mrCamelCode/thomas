@@ -16,6 +16,7 @@ struct KeyStateData {
     current_state: KeyState,
 }
 
+/// Represents received user input.
 #[derive(Component)]
 pub struct Input {
     keylogger: HashMap<Keycode, KeyStateData>,

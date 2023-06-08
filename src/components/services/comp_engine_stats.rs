@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 
 use crate::{Component, Timer};
 
+/// Represents stats tracked by the engine to report on its performance.
 #[derive(Component)]
 pub struct EngineStats {
   pub fps: u64,

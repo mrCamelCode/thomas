@@ -17,22 +17,22 @@ Through conversation and research, he chanced upon an architectural pattern used
 
 He checked out his main branch, tagged it with `v0.1.0`, and then made a new branch: `overhaul-architecture`. With a few triumphant strokes of his keyboard, he deleted every file in the project. Scrapped. All of it. A fresh start.
 
-With renewed vigor, he once again began his implementation. He laid out the groundwork of the engine, letting test-driven development guide his path. The compiler complained far less often this time as he was more experienced and this new architecture cared more about _composition and assocation_ rather than shared ownership and inheritance. He was no longer trying to force Rust to play by _his_ rules, but rather was thinking of ways by which he could play by theirs. With every new addition, he challenged himself to think differently.
+With renewed vigor, he once again began his implementation. He laid out the groundwork of the engine, letting test-driven development guide his path. The compiler complained far less often this time as he was more experienced and this new architecture cared more about _composition and assocation_ rather than inheritance and shared ownership. He was no longer trying to force Rust to play by _his_ rules, but rather was thinking of ways by which he could play by theirs. With every new addition, he challenged himself to think differently.
 
 After many more hours of work and a remade demo game, he looked upon what he had wrought and this time he saw that he _liked it_. The architecture was incredibly modular. Even the game's core systems like its renderer, UI, and performance analysis were all just like plugins slotted naturally into the main flow. The structure's simplicity was charming and made the approach for any addition clear. He dubbed this version `v0.2.0` and reveled in the joy of making a game with it.
 
-Welcome to Thomas.
+Welcome to Thomas, the little game-engine-that-could.
 
 ## The Skinny
 Thomas is a Rust game engine architected after the principles of ECS (Entity-Component-System). You can find some priming docs on the concepts [here](https://en.wikipedia.org/wiki/Entity_component_system). The project was made as an exercise in Rust. While it is intended to be competent in what it does, it's not trying to be some grand engine with a massive toolkit that everyone should be using. That being said, Thomas does not currently support audio and all rendering happens in the terminal. Think of something like the original Dwarf Fortress. This was done partially because the terminal allowed me to spend less time researching 2D and 3D rendering techniques and gave me more time to focus on what I actually made the project for: practicing my Rust skills and diving into ECS.
 
-Before we get too far in, I'd just like to give a shoutout to Sander Mertens, the creator of Flecs. As I mentioned in my little tale, I avoided looking at exact implementation examples, but I found Mertens' blog posts and documentation very helpful on understanding some of the finer points of ECS.
+Before we get too far in, I'd just like to give a shoutout to Sander Mertens, the creator of [Flecs](https://github.com/SanderMertens/flecs). As I mentioned in my little tale, I avoided looking at exact implementation examples, but I found Mertens' blog posts and documentation very helpful on understanding some of the finer points of ECS.
 
 ## Key Differences from Some Other ECS Solutions
 While you may have seen other ECS solutions out there like Bevy and Flecs, Thomas has some key differences to those:
 
 ### Systems are a bit more than just functions
-A principle of ECS is that all logic happens within systems. Systems have access to and know what to operate on via a query that runs against whatever internal mechanism the engine has provided for representing the game world in memory. With queries being so tightly associated to systems, Thomas sees queries as being intrinsically tied to systems, so `System`s as you'll see them in Thomas are `struct`s that hold their `Query`s as well as the function that operates on the results of those `Query`s. This inherently keeps related information together.
+A principle of ECS is that all game logic happens within systems. Systems have access to and know what to operate on via a query that runs against whatever internal mechanism the engine has provided for representing the game world in memory. With queries being so tightly associated to systems, Thomas sees queries as being intrinsically tied to systems, so `System`s as you'll see them in Thomas are `struct`s that hold their `Query`s as well as the function that operates on the results of those `Query`s. This inherently keeps related information together.
 
 ### Queries are evaluated at runtime
 While that statement taken out of context seems obvious, it stands in contrast to a solution like Bevy. While I'm very impressed with Bevy's type-fu, the fact that its queries are constructed via types means that it can only work with information available at compile-time. While we lose some compile-time type safety by evaluating queries at runtime, we put the act of _getting_ data squarely on our queries, which includes filtering potential matches based on conditions. If queries were all compile-time, you would have to query for more than you actually want and then have your system filter those results by what it cares about.
@@ -42,7 +42,7 @@ For example, what if I want to write a renderer system that's going to render al
 Giving queries the ability to filter puts responsibilities where they belong and lets `System`s focus more on their logic and less on deciding which results to actually act on. While it seems we sacrifice some type safety at first glance, the fact that Thomas encourages you to colocate your systems and queries makes it difficult to accidentally misuse the results of a query and cause a runtime error.
 
 ## A Simple Example
-Everything in Thomas starts by making a `Game`. You can chain many things off the game instance before eventually `start`ing it to get the main game loop going. Since Thomas uses ECS, you'll want all of your logic to be in `System`s. Your game is essentially just a collection of `Component`s associated to `Entity`s, and you can manipulate the data on those `Component`s with `System`s. 
+Everything in Thomas starts by making a `Game`. You can chain many things off the game instance before eventually `start`ing it to get the main game loop going. Since Thomas uses ECS, your game is essentially just a collection of `Component`s associated to `Entity`s, and you can manipulate the data on those `Component`s with `System`s. 
 
 That description and the following examples are extremely simplified versions of what to expect in an ECS environment. For a more complete look at what a game in Thomas might look like, see the demo I made [here](https://github.com/mrCamelCode/space_invaders). It's a little game like Space Invaders.
 
@@ -96,7 +96,7 @@ Game::new(GameOptions {
 ```
 This will add a new `System` to the `init` event. `System::new`'s first argument is the list of `Query`s we want to run for this system to have access to certain components in the world. Since we don't need access to any existing components, we just give it an empty vector.
 
-The second argument is a function that takes two arguments. We don't need to use the first argument here, so we won't talk about it just yet. 
+The second argument of `System::new()` is a function that takes two arguments. We don't need to use the first argument of the function for this system, so we won't talk about it just yet. 
 
 The second argument gives us access to the game's command queue. When we want to do something that modifies the state of the _world_ and not of a component that already exists in the world, like adding/modifying/destroying an entity, we can issue a command to perform that change.
 
@@ -104,7 +104,7 @@ As you can see, we use `GameCommand::AddEntity` to put a new entity into the wor
 
 To avoid any confusion, keep in mind that since we're issuing a command to create the entity, it's not done synchronously. With `commands.issue()`, you're just queueing a command. Nothing _actually_ changes in the game world until the engine processes the command. Commands are processed after event triggers, so you can rest assured any issued commands will be processed in the frame they were issued.
 
-If you run that, you should now see your player sitting a little bit away from the top left corner of the screen. While that's neat, it's not terribly interactive, and games should be interactive! For the final part of our little example, lets add a `System` to the `update` event to process user input to move our player around.
+If you run that, you should now see your player sitting a little bit away from the top left corner of the screen. While that's neat, it's not terribly interactive, and games should be interactive! For the final part of our little example, let's add a `System` to the `update` event to process user input to move our player around.
 
 ### Processing user input to move the player
 ```rust
@@ -192,7 +192,7 @@ Moving on, we see the line:
 ```rust
 let input = input_results.get_only::<Input>();
 ```
-`QueryResultList::get_only` is a convenience method that's great for queries that will always return exactly **one** result. In our case, `Input` is like a service. It should only ever have a single instance in the game at any given time, and should always exist. To save ourselves some needless for-loopery or `find`ing to get at the `Input` instance, we can just `get` the `only` result and have Thomas cast it to `Input` so we get all that delicious code-completion and type-checking when we use our `input` binding.
+`QueryResultList::get_only` is a convenience method that's great for queries that will always return exactly **one** result. In our case, `Input` is like a service. It should only ever have a single instance in the game at any given time, and should always exist. To save ourselves some needless for-loopery or `find`ing to get at the `Input` instance, we can just `get` the `only` result and have Thomas pull the `Input` from the list of matched components on the result.
 
 Next, we have:
 ```rust

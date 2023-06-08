@@ -6,6 +6,13 @@ use crate::{
     EVENT_BEFORE_UPDATE,
 };
 
+/// A generator responsible for setting up and performing collision detection between active `TerminalCollider`s in
+/// the world. This must be added to the world for collisions to be generated.
+/// 
+/// As it's impossible for Thomas to know exactly what you want to do when two bodies collide, you'll need to implement
+/// your own collision processing systems. When a collision occurs, an entity with a `TerminalCollision` component is added
+/// to the world. Collision processing systems can query for that component in the update event to act on collisions that
+/// were generated that frame. In the after-update event, all existing collisions are cleaned up.
 pub struct TerminalCollisionsSystemsGenerator {}
 impl TerminalCollisionsSystemsGenerator {
     pub fn new() -> Self {

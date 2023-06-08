@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc, thread, time::Duration};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use device_query::Keycode;
 
@@ -10,10 +10,15 @@ use crate::{
 
 pub type GameCommandsArg = Rc<RefCell<GameCommandQueue>>;
 
+/// The init event. Runs once before the main game loop starts.
 pub const EVENT_INIT: &str = "init";
+/// The before-update event. Runs once per frame before the update event.
 pub const EVENT_BEFORE_UPDATE: &str = "before-update";
+/// The update event. Runs once per frame.
 pub const EVENT_UPDATE: &str = "update";
+/// The after-update event. Runs once per frame after the update event.
 pub const EVENT_AFTER_UPDATE: &str = "after-update";
+/// The cleanup event. Runs once after the main game loop ends.
 pub const EVENT_CLEANUP: &str = "cleanup";
 
 #[derive(PartialEq, Eq)]
@@ -22,10 +27,42 @@ pub enum Renderer {
 }
 
 pub struct GameOptions {
+    /// Whether the user can press the Escape key to quit the game. Note that in a terminal game, the user
+    /// can always press Ctrl+C to quit the game.
     pub press_escape_to_quit: bool,
+    /// The maximum number of times the main game loop should run in one second. A value of 0 indicates an uncapped
+    /// frame rate.
     pub max_frame_rate: u16,
 }
 
+/// The core structure of any game made with Thomas. The `Game` instance facilitates communication with Thomas' internal
+/// mechanisms to automate the nitty gritty details of running the game.
+///
+/// All Thomas games will begin with using `Game`:
+/// ```
+/// use thomas::{Game, Renderer, TerminalRendererOptions, Dimensions2d, Text, System, GameCommand, UiAnchor, Alignment, IntCoords2d, GameOptions};
+///
+/// Game::new(GameOptions {
+///     press_escape_to_quit: false,
+///     max_frame_rate: 60,
+/// })
+/// .add_init_system(System::new(vec![], |_, commands| {
+///     commands.borrow_mut().issue(GameCommand::AddEntity(vec![
+///         Box::new(Text {
+///             anchor: UiAnchor::TopLeft,
+///             justification: Alignment::Left,
+///             offset: IntCoords2d::zero(),
+///             value: String::from("Hello Thomas!"),
+///         }),
+///     ]));
+/// }));
+/// // .start(Renderer::Terminal(TerminalRendererOptions {
+/// //     screen_resolution: Dimensions2d::new(10, 30),
+/// //     include_screen_outline: true,
+/// //     include_default_camera: true,
+/// // }));
+///     
+/// ```
 pub struct Game {
     entity_manager: EntityManager,
     events_to_systems: HashMap<&'static str, Vec<System>>,
@@ -44,18 +81,30 @@ impl Game {
         }
     }
 
+    /// Adds a system to the init event. The init event runs exactly **one** time during the life of the game. It runs
+    /// before the main game loop starts. The init event is a good place to put any systems that will be used to
+    /// initialize your game world.
     pub fn add_init_system(self, system: System) -> Self {
         self.add_system(EVENT_INIT, system)
     }
 
+    /// Adds a system to the update event. The update event runs once every frame. This is where the bulk of your systems
+    /// will be.
     pub fn add_update_system(self, system: System) -> Self {
         self.add_system(EVENT_UPDATE, system)
     }
 
+    /// Adds a system to the cleanup event. The cleanup event runs exactly **one** time during the life of the game. It
+    /// runs after the main game loop has ended. It's a good place to do anything you want to do when the game
+    /// _successfully and properly_ exits. This could include cleaning up any system side effects, or perhaps saving
+    /// the player's progress.
     pub fn add_cleanup_system(self, system: System) -> Self {
         self.add_system(EVENT_CLEANUP, system)
     }
 
+    /// Adds a system to the specified event. While it's likely you'll mostly use the init, update, and cleanup events,
+    /// this method can be useful if you have a reason to use the other events Thomas provides. All event names are
+    /// constants and start with `EVENT_`.
     pub fn add_system(mut self, event_name: &'static str, system: System) -> Self {
         if !self.events_to_systems.contains_key(event_name) {
             self.events_to_systems.insert(event_name, vec![]);
@@ -68,6 +117,10 @@ impl Game {
         self
     }
 
+    /// Adds all systems specified by the `SystemsGenerator`. `SystemsGenerator`s are a great way to split collections of
+    /// systems into units for organization. Thomas also includes some SystemsGenerators for you for engine features
+    /// you have to opt into. An example is the `TerminalCollisionsSystemsGenerators`, which enables collision detection
+    /// in the terminal when added.
     pub fn add_systems_from_generator(mut self, systems_generator: impl SystemsGenerator) -> Self {
         for (event_name, system) in systems_generator.generate() {
             self = self.add_system(event_name, system);
@@ -76,6 +129,8 @@ impl Game {
         self
     }
 
+    /// Starts the game. This is the last thing you should be calling on your game instance, as it starts the main game
+    /// loop. The thread will spin in this method until the `GameCommand::Quit` command is issued.
     pub fn start(mut self, renderer: Renderer) {
         let commands = Rc::new(RefCell::new(GameCommandQueue::new()));
 
@@ -221,6 +276,9 @@ impl GameCommandQueue {
         Self { queue: vec![] }
     }
 
+    /// Issues a command to the queue. Nothing changes in the game until the queue is processed. Because of this,
+    /// you can think of the side effects of a command as being asynchronous--they won't happen immediately after
+    /// you issue them.
     pub fn issue(&mut self, command: GameCommand) {
         self.queue.push(command);
     }

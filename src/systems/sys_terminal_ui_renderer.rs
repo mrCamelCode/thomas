@@ -6,6 +6,8 @@ use crate::{
     TerminalTextCharacter, TerminalTransform, Text, UiAnchor, EVENT_UPDATE,
 };
 
+/// A generator responsible for setting up and performing UI rendering in a terminal game. This must be added to the game
+/// to enable UI rendering.
 pub struct TerminalUiRendererSystemsGenerator {}
 impl TerminalUiRendererSystemsGenerator {
     pub fn new() -> Self {

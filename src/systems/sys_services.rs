@@ -3,7 +3,7 @@ use crate::{
     EVENT_BEFORE_UPDATE, EVENT_INIT,
 };
 
-pub struct ServicesSystemsGenerator {}
+pub(crate) struct ServicesSystemsGenerator {}
 impl ServicesSystemsGenerator {
     pub fn new() -> Self {
         Self {}

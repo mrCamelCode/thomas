@@ -1,3 +1,7 @@
+/// Useful in several contexts, `Layer`s are a way to represent how something exists relative to other things.
+/// 
+/// In the context of 2D rendering, layers can define what should be visible if two things are occupying the same
+/// space.
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct Layer(pub i32);
 impl Layer {

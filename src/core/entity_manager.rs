@@ -11,6 +11,7 @@ pub type StoredComponent = Rc<RefCell<Box<dyn Component>>>;
 type EntitiesToComponents = HashMap<Entity, HashMap<String, StoredComponent>>;
 type ComponentsToEntities = HashMap<String, HashSet<Entity>>;
 
+/// A list of components that are currently stored in the game world.
 pub struct StoredComponentList {
     components: Vec<StoredComponent>,
 }
@@ -27,6 +28,7 @@ impl StoredComponentList {
         self.components.is_empty()
     }
 
+    /// Attempts to retrieve the specified component from the list. If no such component exists, returns `None`.
     pub fn try_get<T>(&self) -> Option<Ref<T>>
     where
         T: Component + 'static,
@@ -42,6 +44,7 @@ impl StoredComponentList {
         None
     }
 
+    /// Like `try_get`, but retrieves a mutable reference.
     pub fn try_get_mut<T>(&self) -> Option<RefMut<T>>
     where
         T: Component + 'static,
@@ -57,6 +60,10 @@ impl StoredComponentList {
         None
     }
 
+    /// Gets a reference to the specified component in the list.
+    ///
+    /// # Panics
+    /// If the component you specify isn't in the list, or you've already mutably borrowed that same component.
     pub fn get<T>(&self) -> Ref<T>
     where
         T: Component + 'static,
@@ -68,6 +75,9 @@ impl StoredComponentList {
         panic!("Component {} was not present, or you're trying to borrow it while it's already mutably borrowed.", T::name());
     }
 
+    /// Like `get`, but retrieves a mutable reference.
+    /// # Panics
+    /// If the component you specify isn't in the list, or you've already mutably borrowed that same component.
     pub fn get_mut<T>(&self) -> RefMut<T>
     where
         T: Component + 'static,
@@ -80,7 +90,13 @@ impl StoredComponentList {
     }
 }
 
-pub struct EntityManager {
+/// The core representation of the game world in memory, the `EntityManager` facilitates all operations on updating the
+/// game world, its entities, and their components. Queries can be run against the `EntityManager` to produce matches
+/// that can be used by systems.
+///
+/// For speed of retrieval, the `EntityManager` internally uses maps and sets to track all the entities in the world and
+/// their components, as well as all components in the world and the entities that have them.
+pub(crate) struct EntityManager {
     entities_to_components: EntitiesToComponents,
     components_to_entities: ComponentsToEntities,
     available_entity_ids: Vec<Entity>,
@@ -94,6 +110,8 @@ impl EntityManager {
         }
     }
 
+    /// Adds an entity to the world, reusing any available entity IDs before falling back to creating a new one.
+    /// Returns a copy of the created `Entity`.
     pub fn add_entity(&mut self, components: Vec<Box<dyn Component>>) -> Entity {
         let entity = self.get_next_entity();
 
@@ -131,6 +149,7 @@ impl EntityManager {
         return entity;
     }
 
+    /// Removes an entity from the world, freeing its ID for reuse.
     pub fn remove_entity(&mut self, entity: &Entity) {
         if let Some((removed_entity, component_map)) =
             self.entities_to_components.remove_entry(entity)
@@ -178,6 +197,8 @@ impl EntityManager {
         }
     }
 
+    /// Allows a `Query` to be run against the `EntityManager`, producing a `QueryResultList` reflecting the matches in the
+    /// current state of the game world.
     pub fn query(&self, query: &Query) -> QueryResultList {
         let allowed_component_names = query.allowed_component_names();
         let forbidden_component_names = query.forbidden_component_names();

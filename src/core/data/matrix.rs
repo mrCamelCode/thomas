@@ -1,5 +1,6 @@
 use super::{Dimensions2d, IntCoords2d};
 
+/// A 2D matrix with defined iteration order.
 pub struct Matrix<T> {
     matrix: Vec<Vec<MatrixCell<T>>>,
     dimensions: Dimensions2d,
