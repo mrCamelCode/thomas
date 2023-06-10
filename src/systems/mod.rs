@@ -1,5 +1,5 @@
 mod sys_services;
-pub use sys_services::*;
+pub(crate) use sys_services::*;
 
 mod sys_terminal_renderer;
 pub use sys_terminal_renderer::*;
