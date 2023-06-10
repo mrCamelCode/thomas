@@ -71,7 +71,7 @@ After that, the game runs all `update` systems on every frame. When the main gam
 
 ### Adding the player to the world
 ```rust
-use thomas::{Game, GameOptions, Renderer, TerminalRendererOptions, Dimensions2d, System, GameCommand, Layer, IntCoords2d};
+use thomas::{Game, GameOptions, Renderer, TerminalRendererOptions, Dimensions2d, System, GameCommand, Layer, IntCoords2d, TerminalRenderer, TerminalTransform};
 
 Game::new(GameOptions {
   press_escape_to_quit: false,
@@ -108,7 +108,7 @@ If you run that, you should now see your player sitting a little bit away from t
 
 ### Processing user input to move the player
 ```rust
-use thomas::{Game, GameOptions, Renderer, TerminalRendererOptions, Dimensions2d, System, GameCommand, Layer, IntCoords2d, Query, Keycode, TerminalCamera};
+use thomas::{Game, GameOptions, Renderer, TerminalRendererOptions, Dimensions2d, System, GameCommand, Layer, IntCoords2d, Query, Keycode, TerminalCamera, TerminalRenderer, TerminalTransform, Input};
 
 Game::new(GameOptions {
   press_escape_to_quit: false,
@@ -129,11 +129,11 @@ Game::new(GameOptions {
   Query::new().has::<TerminalTransform>().has_no::<TerminalCamera>(),
   Query::new().has::<Input>(),
 ], |results, _| {
-  if let [movables_results, input_results, ..] = &results[..] [
+  if let [movables_results, input_results, ..] = &results[..] {
     let input = input_results.get_only::<Input>();
 
     for movable_result in movables_results {
-      let mut transform = movable_result.get_mut::<TerminalTransform>();
+      let mut transform = movable_result.components().get_mut::<TerminalTransform>();
 
       if input.is_key_down(&Keycode::A) {
         transform.coords += IntCoords2d::left();
@@ -145,7 +145,7 @@ Game::new(GameOptions {
         transform.coords += IntCoords2d::up();
       }
     }
-  ]
+  }
 }))
 .start(Renderer::Terminal(TerminalRendererOptions {
   screen_resolution: Dimensions2d::new(10, 30),
