@@ -1,6 +1,6 @@
 use std::{
     cell::{Ref, RefMut},
-    ops::Deref,
+    ops::{Deref, DerefMut},
 };
 
 use crate::{Component, Entity, StoredComponentList};
@@ -9,14 +9,14 @@ pub type WherePredicate = dyn Fn(&dyn Component) -> bool + 'static;
 
 /// Represents how to pull specific entities and components out of the world for use by a `System`. Methods
 /// in a `Query` can be chained to create more complex queries. All chains are treated like logical ANDs.
-/// 
+///
 /// For example, the following `Query`:
 /// ```
 /// use thomas::{Query, TerminalTransform, Identity, Component};
-/// 
+///
 /// #[derive(Component)]
 /// struct CustomComponent {}
-/// 
+///
 /// Query::new()
 ///     .has::<TerminalTransform>()
 ///     .has_no::<CustomComponent>()
@@ -98,6 +98,10 @@ pub struct QueryResult {
     pub(crate) components: StoredComponentList,
 }
 impl QueryResult {
+    pub fn new(entity: Entity, components: StoredComponentList) -> Self {
+        Self { entity, components }
+    }
+
     /// The entity that matched the query.
     pub fn entity(&self) -> &Entity {
         &self.entity
@@ -127,7 +131,7 @@ impl QueryResultList {
     /// A convenience method that gets the first match and retrieves the specified component from its list of matched components.
     /// This is useful when you have a query that will only ever match on exactly **one** entity in the world. In that case, you're
     /// `get`ting the `only` match that query will ever have.
-    /// 
+    ///
     /// # Panics
     /// If there isn't at least one match in the `QueryResultList`, or the specified component is not in the list of
     /// matched components on the first match.
@@ -136,7 +140,7 @@ impl QueryResultList {
     }
 
     /// Like `get_only`, but provides a mutable reference.
-    /// 
+    ///
     /// # Panics
     /// If there isn't at least one match in the `QueryResultList`, or the specified component is not in the list of
     /// matched components on the first match.
@@ -185,16 +189,18 @@ impl Deref for QueryResultList {
         &self.matches
     }
 }
+impl DerefMut for QueryResultList {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.matches
+    }
+}
 
 pub(crate) struct ComponentQueryData {
     component_name: &'static str,
     where_predicate: Option<Box<WherePredicate>>,
 }
 impl ComponentQueryData {
-    pub fn new(
-        component_name: &'static str,
-        where_predicate: Option<Box<WherePredicate>>,
-    ) -> Self {
+    pub fn new(component_name: &'static str, where_predicate: Option<Box<WherePredicate>>) -> Self {
         Self {
             component_name,
             where_predicate,
