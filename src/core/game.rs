@@ -272,7 +272,7 @@ pub struct GameCommandQueue {
     queue: Vec<GameCommand>,
 }
 impl GameCommandQueue {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self { queue: vec![] }
     }
 
@@ -281,6 +281,10 @@ impl GameCommandQueue {
     /// you issue them.
     pub fn issue(&mut self, command: GameCommand) {
         self.queue.push(command);
+    }
+
+    pub fn queue(&self) -> &Vec<GameCommand> {
+        &self.queue
     }
 }
 impl IntoIterator for GameCommandQueue {
@@ -299,6 +303,7 @@ impl<'a> IntoIterator for &'a GameCommandQueue {
         (&self.queue).into_iter()
     }
 }
+
 
 #[cfg(test)]
 mod tests {
