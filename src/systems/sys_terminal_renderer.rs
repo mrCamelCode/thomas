@@ -6,35 +6,30 @@ use std::{
 
 use crossterm::{
     cursor, execute,
+    style::{Color, ResetColor, SetBackgroundColor, SetForegroundColor},
     terminal::{self, disable_raw_mode, enable_raw_mode, Clear, ClearType, SetSize},
 };
 
 use crate::{
     Component, Dimensions2d, GameCommand, IntCoords2d, Layer, Matrix, Priority, Query,
-    QueryResultList, System, SystemsGenerator, TerminalCamera, TerminalRenderer, TerminalTransform,
-    EVENT_AFTER_UPDATE, EVENT_CLEANUP, EVENT_INIT,
+    QueryResultList, Rgb, System, SystemsGenerator, TerminalCamera, TerminalRenderer,
+    TerminalTransform, EVENT_AFTER_UPDATE, EVENT_CLEANUP, EVENT_INIT,
 };
 
-const HORIZONTAL_OUTLINE_DELIMITER: &str = "=";
-const VERTICAL_OUTLINE_DELIMITER: &str = "|";
-const NEWLINE_DELIMITER: &str = "\r\n";
-
-const TERMINAL_DIMENSIONS_PADDING: u16 = 10;
+const TERMINAL_DIMENSIONS_PADDING: u16 = 0;
 
 #[derive(Component, Debug)]
 pub(crate) struct TerminalRendererState {
-    pub initial_terminal_size: (u16, u16),
+    initial_terminal_size: (u16, u16),
     pub options: TerminalRendererOptions,
-    pub prev_render: String,
-    pub is_initial_render: bool,
+    prev_render: Option<TerminalRendererMatrix>,
 }
 impl TerminalRendererState {
     pub(crate) fn new(options: TerminalRendererOptions) -> Self {
         TerminalRendererState {
             initial_terminal_size: (0, 0),
             options,
-            prev_render: String::new(),
-            is_initial_render: true,
+            prev_render: None,
         }
     }
 }
@@ -99,19 +94,20 @@ impl SystemsGenerator for TerminalRendererSystemsGenerator {
                                         + TERMINAL_DIMENSIONS_PADDING
                                 ),
                                 cursor::Hide,
+                                cursor::SavePosition,
                                 cursor::MoveTo(0, 0),
                             ) {
                                 panic!(
-                                "TerminalRenderer could not do initial setup of game screen. Error: {}",
-                                e
-                            );
+                                        "TerminalRenderer could not do initial setup of game screen. Error: {}",
+                                        e
+                                    );
                             }
 
                             if let Err(e) = enable_raw_mode() {
                                 panic!(
-                                "TerminalRenderer could not set raw mode, cannot continue. Error: {}",
-                                e
-                            );
+                                        "TerminalRenderer could not set raw mode, cannot continue. Error: {}",
+                                        e
+                                    );
                             }
 
                             if state.options.include_default_camera {
@@ -159,54 +155,13 @@ impl SystemsGenerator for TerminalRendererSystemsGenerator {
                                 let main_camera_transform =
                                     camera_result.components().get::<TerminalTransform>();
 
-                                let new_render_string = make_render_string(
+                                state.prev_render = Some(draw(
                                     &*main_camera,
                                     &*main_camera_transform,
                                     &renderables_query,
                                     &state.options,
-                                );
-
-                                if state.is_initial_render {
-                                    if let Err(e) = write!(stdout(), "{}", new_render_string) {
-                                        panic!("Error occurred while trying to write initial render to the terminal: {e}");
-                                    }
-
-                                    state.is_initial_render = false;
-                                } else {
-                                    let new_render_lines = new_render_string
-                                        .split(NEWLINE_DELIMITER)
-                                        .collect::<Vec<&str>>();
-                                    let prev_render_lines = state
-                                        .prev_render
-                                        .split(NEWLINE_DELIMITER)
-                                        .collect::<Vec<&str>>();
-
-                                    for row in 0..new_render_lines.len() {
-                                        if new_render_lines[row] != prev_render_lines[row] {
-                                            if let Err(e) =
-                                                execute!(stdout(), cursor::MoveTo(0, row as u16))
-                                            {
-                                                panic!("Error occurred while trying to move the cursor to position (0, {}): {e}", row as u16);
-                                            }
-
-                                            if let Err(e) = write!(
-                                                stdout(),
-                                                "{}",
-                                                new_render_lines[row].replace("\r\n", "")
-                                            ) {
-                                                panic!("Error occurred while trying to write the new render to the terminal: {e}");
-                                            }
-
-                                            if let Err(e) =
-                                                execute!(stdout(), Clear(ClearType::UntilNewLine))
-                                            {
-                                                panic!("Error occurred while trying to execute the UntilNewLine clear type: {e}");
-                                            }
-                                        }
-                                    }
-                                }
-
-                                state.prev_render = new_render_string;
+                                    &state.prev_render,
+                                ));
                             }
                         }
                     },
@@ -228,7 +183,7 @@ impl SystemsGenerator for TerminalRendererSystemsGenerator {
                                 .get::<TerminalRendererState>();
 
                             let error_message =
-                    "The terminal may be in a bad state. It's recommended to restart it if you intend to continue using this terminal instance.";
+                            "The terminal may be in a bad state. It's recommended to start a new terminal instance if you want to use the terminal.";
 
                             if let Err(e) = execute!(
                                 stdout(),
@@ -236,8 +191,10 @@ impl SystemsGenerator for TerminalRendererSystemsGenerator {
                                     state.initial_terminal_size.0,
                                     state.initial_terminal_size.1
                                 ),
-                                cursor::MoveTo(0, state.initial_terminal_size.1),
                                 cursor::Show,
+                                cursor::RestorePosition,
+                                Clear(ClearType::All),
+                                ResetColor
                             ) {
                                 println!("Could not reset terminal size and cursor visibility. {error_message} Error: {e}");
                             }
@@ -245,6 +202,8 @@ impl SystemsGenerator for TerminalRendererSystemsGenerator {
                             if let Err(e) = disable_raw_mode() {
                                 println!("Could not disable raw mode. {error_message} Error: {e}");
                             }
+
+                            println!("Thanks for playing a game powered by Thomas!");
                         }
                     },
                 ),
@@ -253,45 +212,76 @@ impl SystemsGenerator for TerminalRendererSystemsGenerator {
     }
 }
 
-fn make_render_string(
+fn draw(
     main_camera: &TerminalCamera,
     main_camera_transform: &TerminalTransform,
     renderables_query_result: &QueryResultList,
     renderer_options: &TerminalRendererOptions,
-) -> String {
+    previous_render: &Option<TerminalRendererMatrix>,
+) -> TerminalRendererMatrix {
     let render_matrix = make_render_matrix(
         main_camera,
         main_camera_transform,
         renderables_query_result,
-        &renderer_options,
+        renderer_options,
     );
 
-    let mut render_string = String::new();
+    for col in 0..render_matrix.dimensions().width() {
+        for row in 0..render_matrix.dimensions().height() {
+            let cell = render_matrix.get(col, row).unwrap();
+            let prev_cell = if let Some(prev_render) = previous_render {
+                prev_render.get(col, row)
+            } else {
+                None
+            };
 
-    let mut curr_row = 0;
-    for cell in render_matrix.iter() {
-        let (_, row) = cell.location().values();
-        let is_new_row = row != curr_row;
+            if prev_cell.is_none() || cell.data() != prev_cell.unwrap().data() {
+                if let Err(e) = execute!(stdout(), cursor::MoveTo(col as u16, row as u16)) {
+                    panic!(
+                        "Error occurred while trying to move the cursor to position ({}, {}): {e}",
+                        col as u16, row as u16
+                    );
+                }
 
-        if is_new_row {
-            render_string += NEWLINE_DELIMITER;
+                if let Err(e) = execute!(
+                    stdout(),
+                    SetForegroundColor(get_crossterm_color(
+                        &cell.data().foreground_color,
+                        &renderer_options.default_foreground_color
+                    )),
+                    SetBackgroundColor(get_crossterm_color(
+                        &cell.data().background_color,
+                        &renderer_options.default_background_color
+                    )),
+                ) {
+                    panic!("Error occurred while trying to set the cell's draw color at ({col}, {row}): {e}");
+                }
+
+                if let Err(e) = write!(stdout(), "{}", cell.data().display) {
+                    panic!("Error occurred while trying to update the displayed character at cell ({col}, {row}): {e}");
+                }
+            }
         }
-
-        render_string += &cell.data().display.to_string();
-
-        curr_row = row;
     }
 
-    format!(
-        "{}{}{}",
-        NEWLINE_DELIMITER,
-        if renderer_options.include_screen_outline {
-            outline_render_string(render_string, &renderer_options)
-        } else {
-            render_string
-        },
-        NEWLINE_DELIMITER
-    )
+    render_matrix
+}
+
+fn get_crossterm_color(color_option: &Option<Rgb>, default_color_option: &Option<Rgb>) -> Color {
+    let color_to_use = if color_option.is_some() {
+        color_option
+    } else if default_color_option.is_some() {
+        default_color_option
+    } else {
+        &None
+    };
+
+    if let Some(color) = color_to_use {
+        Color::parse_ansi(&format!("2;{};{};{}", color.r(), color.g(), color.b()))
+            .expect("Color is supported.")
+    } else {
+        Color::Reset
+    }
 }
 
 fn make_render_matrix(
@@ -306,7 +296,12 @@ fn make_render_matrix(
         let renderable_transform = result.components().get::<TerminalTransform>();
         let renderable_screen_position = renderable_transform.coords - main_camera_transform.coords;
 
-        let TerminalRenderer { display, layer } = &*result.components().get::<TerminalRenderer>();
+        let TerminalRenderer {
+            display,
+            layer,
+            foreground_color,
+            background_color,
+        } = &*result.components().get::<TerminalRenderer>();
 
         let (x, y) = (
             renderable_screen_position.x() as u64,
@@ -328,7 +323,14 @@ fn make_render_matrix(
                         y,
                         TerminalRendererMatrixCell {
                             display: *display,
+                            // display: make_colored_character(
+                            //     *display,
+                            //     foreground_color,
+                            //     background_color,
+                            // ),
                             layer_of_value: layer.clone(),
+                            foreground_color: *foreground_color,
+                            background_color: *background_color,
                         },
                     );
                 }
@@ -337,30 +339,6 @@ fn make_render_matrix(
     }
 
     render_matrix
-}
-
-fn outline_render_string(
-    render_string: String,
-    renderer_options: &TerminalRendererOptions,
-) -> String {
-    let make_horizontal_outline = || -> String {
-        (0..renderer_options.screen_resolution.width())
-            .map(|_| HORIZONTAL_OUTLINE_DELIMITER)
-            .collect::<Vec<&str>>()
-            .join("")
-            .to_string()
-    };
-
-    let header = format!("/{}\\", make_horizontal_outline());
-    let footer = format!("\\{}/", make_horizontal_outline());
-
-    let body = render_string
-        .split(NEWLINE_DELIMITER)
-        .map(|line| format!("{VERTICAL_OUTLINE_DELIMITER}{line}{VERTICAL_OUTLINE_DELIMITER}"))
-        .collect::<Vec<String>>()
-        .join(NEWLINE_DELIMITER);
-
-    format!("{header}{NEWLINE_DELIMITER}{body}{NEWLINE_DELIMITER}{footer}")
 }
 
 fn is_renderable_visible(
@@ -395,10 +373,12 @@ fn is_renderable_visible(
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub struct TerminalRendererOptions {
     pub screen_resolution: Dimensions2d,
-    pub include_screen_outline: bool,
     pub include_default_camera: bool,
+    pub default_foreground_color: Option<Rgb>,
+    pub default_background_color: Option<Rgb>,
 }
 
+#[derive(Debug)]
 struct TerminalRendererMatrix {
     matrix: Matrix<TerminalRendererMatrixCell>,
 }
@@ -422,15 +402,20 @@ impl DerefMut for TerminalRendererMatrix {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 struct TerminalRendererMatrixCell {
     display: char,
     layer_of_value: Layer,
+    foreground_color: Option<Rgb>,
+    background_color: Option<Rgb>,
 }
 impl TerminalRendererMatrixCell {
     fn default() -> Self {
         Self {
             display: ' ',
             layer_of_value: Layer::furthest_background(),
+            foreground_color: None,
+            background_color: None,
         }
     }
 }
@@ -439,364 +424,453 @@ impl TerminalRendererMatrixCell {
 mod tests {
     use super::*;
 
-    mod test_make_draw_string {
+    mod test_get_crossterm_color {
         use super::*;
 
-        mod no_screen_outline {
-            use crate::{EntityManager, IntCoords2d};
+        #[test]
+        fn color_code_is_correct_when_color_is_provided() {
+            assert_eq!(
+                get_crossterm_color(&Some(Rgb::white()), &None),
+                Color::Rgb {
+                    r: 255,
+                    g: 255,
+                    b: 255
+                }
+            );
+        }
+
+        #[test]
+        fn color_code_is_correct_when_default_color_is_provided() {
+            assert_eq!(
+                get_crossterm_color(&Some(Rgb::white()), &Some(Rgb::black())),
+                Color::Rgb {
+                    r: 255,
+                    g: 255,
+                    b: 255
+                }
+            );
+        }
+
+        #[test]
+        fn color_code_is_correct_when_only_default_color_is_provided() {
+            assert_eq!(
+                get_crossterm_color(&None, &Some(Rgb::black())),
+                Color::Rgb { r: 0, g: 0, b: 0 }
+            );
+        }
+
+        #[test]
+        fn color_code_is_reset_when_no_colors_are_provided() {
+            assert_eq!(get_crossterm_color(&None, &None), Color::Reset)
+        }
+    }
+
+    mod test_make_render_matrix {
+        use super::*;
+
+        mod without_camera_offset {
+            use std::{cell::RefCell, rc::Rc};
+
+            use crate::{Entity, QueryResult, StoredComponentList};
 
             use super::*;
 
             #[test]
-            fn it_includes_all_renderable_entities() {
-                let options = TerminalRendererOptions {
-                    screen_resolution: Dimensions2d::new(3, 3),
-                    include_screen_outline: false,
-                    include_default_camera: false,
-                };
-
-                let generated_renderer_systems = TerminalRendererSystemsGenerator::new().generate();
-
-                let after_update_system = &generated_renderer_systems
-                    .iter()
-                    .find(|(name, _)| *name == EVENT_AFTER_UPDATE)
-                    .unwrap()
-                    .1;
-
-                let mut em = EntityManager::new();
-                em.add_entity(vec![Box::new(TerminalTransform {
-                    coords: IntCoords2d::new(0, 0),
-                })]);
-                em.add_entity(vec![
-                    Box::new(TerminalRenderer {
-                        display: '^',
-                        layer: Layer::base(),
-                    }),
-                    Box::new(TerminalTransform {
-                        coords: IntCoords2d::new(1, 1),
-                    }),
-                ]);
-                em.add_entity(vec![
-                    Box::new(TerminalRenderer {
-                        display: '5',
-                        layer: Layer::base(),
-                    }),
-                    Box::new(TerminalTransform {
-                        coords: IntCoords2d::new(0, 0),
-                    }),
-                ]);
-                em.add_entity(vec![Box::new(TerminalTransform {
-                    coords: IntCoords2d::new(0, 0),
-                })]);
-                em.add_entity(vec![
-                    Box::new(TerminalRenderer {
-                        display: '@',
-                        layer: Layer::base(),
-                    }),
-                    Box::new(TerminalTransform {
-                        coords: IntCoords2d::new(2, 2),
-                    }),
-                ]);
-
-                let query_results = em.query(&after_update_system.queries()[0]);
-
-                let result = make_render_string(
+            fn renderables_in_view_are_present() {
+                let matrix = make_render_matrix(
                     &TerminalCamera {
-                        field_of_view: Dimensions2d::new(3, 3),
+                        field_of_view: Dimensions2d::new(10, 10),
                         is_main: true,
                     },
                     &TerminalTransform {
                         coords: IntCoords2d::zero(),
                     },
-                    &query_results,
-                    &options,
+                    &QueryResultList::new(vec![
+                        QueryResult::new(
+                            Entity(0),
+                            StoredComponentList::new(vec![
+                                Rc::new(RefCell::new(Box::new(TerminalRenderer {
+                                    display: '*',
+                                    layer: Layer::base(),
+                                    foreground_color: None,
+                                    background_color: None,
+                                }))),
+                                Rc::new(RefCell::new(Box::new(TerminalTransform {
+                                    coords: IntCoords2d::new(0, 3),
+                                }))),
+                            ]),
+                        ),
+                        QueryResult::new(
+                            Entity(1),
+                            StoredComponentList::new(vec![
+                                Rc::new(RefCell::new(Box::new(TerminalRenderer {
+                                    display: 'A',
+                                    layer: Layer::base(),
+                                    foreground_color: None,
+                                    background_color: None,
+                                }))),
+                                Rc::new(RefCell::new(Box::new(TerminalTransform {
+                                    coords: IntCoords2d::new(5, 2),
+                                }))),
+                            ]),
+                        ),
+                    ]),
+                    &TerminalRendererOptions {
+                        screen_resolution: Dimensions2d::new(10, 10),
+                        include_default_camera: true,
+                        default_foreground_color: None,
+                        default_background_color: None,
+                    },
                 );
 
-                assert_eq!(result, "\r\n5  \r\n ^ \r\n  @\r\n")
+                for cell in &*matrix {
+                    match cell.location().values() {
+                        (0, 3) => {
+                            assert_eq!(
+                                *cell.data(),
+                                TerminalRendererMatrixCell {
+                                    background_color: None,
+                                    foreground_color: None,
+                                    display: '*',
+                                    layer_of_value: Layer::base(),
+                                }
+                            );
+                        }
+                        (5, 2) => {
+                            assert_eq!(
+                                *cell.data(),
+                                TerminalRendererMatrixCell {
+                                    background_color: None,
+                                    foreground_color: None,
+                                    display: 'A',
+                                    layer_of_value: Layer::base(),
+                                }
+                            );
+                        }
+                        _ => {
+                            assert_eq!(
+                                *cell.data(),
+                                TerminalRendererMatrixCell {
+                                    background_color: None,
+                                    foreground_color: None,
+                                    display: ' ',
+                                    layer_of_value: Layer::furthest_background(),
+                                }
+                            );
+                        }
+                    }
+                }
             }
 
             #[test]
-            fn values_on_higher_layer_overwrite_lower_layer_values() {
-                let options = TerminalRendererOptions {
-                    screen_resolution: Dimensions2d::new(3, 3),
-                    include_screen_outline: false,
-                    include_default_camera: false,
-                };
-
-                let generated_renderer_systems = TerminalRendererSystemsGenerator::new().generate();
-
-                let after_update_system = &generated_renderer_systems
-                    .iter()
-                    .find(|(name, _)| *name == EVENT_AFTER_UPDATE)
-                    .unwrap()
-                    .1;
-
-                let mut em = EntityManager::new();
-                em.add_entity(vec![Box::new(TerminalTransform {
-                    coords: IntCoords2d::new(0, 0),
-                })]);
-                em.add_entity(vec![
-                    Box::new(TerminalRenderer {
-                        display: '^',
-                        layer: Layer(1),
-                    }),
-                    Box::new(TerminalTransform {
-                        coords: IntCoords2d::new(2, 2),
-                    }),
-                ]);
-                em.add_entity(vec![
-                    Box::new(TerminalRenderer {
-                        display: '5',
-                        layer: Layer::base(),
-                    }),
-                    Box::new(TerminalTransform {
-                        coords: IntCoords2d::new(0, 0),
-                    }),
-                ]);
-                em.add_entity(vec![Box::new(TerminalTransform {
-                    coords: IntCoords2d::new(0, 0),
-                })]);
-                em.add_entity(vec![
-                    Box::new(TerminalRenderer {
-                        display: '@',
-                        layer: Layer::base(),
-                    }),
-                    Box::new(TerminalTransform {
-                        coords: IntCoords2d::new(2, 2),
-                    }),
-                ]);
-
-                let query_results = em.query(&after_update_system.queries()[0]);
-
-                let result = make_render_string(
+            fn renderables_out_of_view_are_absent() {
+                let matrix = make_render_matrix(
                     &TerminalCamera {
-                        field_of_view: Dimensions2d::new(3, 3),
+                        field_of_view: Dimensions2d::new(10, 10),
                         is_main: true,
                     },
                     &TerminalTransform {
                         coords: IntCoords2d::zero(),
                     },
-                    &query_results,
-                    &options,
+                    &QueryResultList::new(vec![
+                        QueryResult::new(
+                            Entity(0),
+                            StoredComponentList::new(vec![
+                                Rc::new(RefCell::new(Box::new(TerminalRenderer {
+                                    display: '*',
+                                    layer: Layer::base(),
+                                    foreground_color: None,
+                                    background_color: None,
+                                }))),
+                                Rc::new(RefCell::new(Box::new(TerminalTransform {
+                                    coords: IntCoords2d::new(0, 3),
+                                }))),
+                            ]),
+                        ),
+                        QueryResult::new(
+                            Entity(1),
+                            StoredComponentList::new(vec![
+                                Rc::new(RefCell::new(Box::new(TerminalRenderer {
+                                    display: 'A',
+                                    layer: Layer::base(),
+                                    foreground_color: None,
+                                    background_color: None,
+                                }))),
+                                Rc::new(RefCell::new(Box::new(TerminalTransform {
+                                    coords: IntCoords2d::new(5, 2),
+                                }))),
+                            ]),
+                        ),
+                        QueryResult::new(
+                            Entity(2),
+                            StoredComponentList::new(vec![
+                                Rc::new(RefCell::new(Box::new(TerminalRenderer {
+                                    display: 'A',
+                                    layer: Layer::base(),
+                                    foreground_color: None,
+                                    background_color: None,
+                                }))),
+                                Rc::new(RefCell::new(Box::new(TerminalTransform {
+                                    coords: IntCoords2d::new(-1, 2),
+                                }))),
+                            ]),
+                        ),
+                    ]),
+                    &TerminalRendererOptions {
+                        screen_resolution: Dimensions2d::new(10, 10),
+                        include_default_camera: true,
+                        default_foreground_color: None,
+                        default_background_color: None,
+                    },
                 );
 
-                assert_eq!(result, "\r\n5  \r\n   \r\n  ^\r\n")
+                for cell in &*matrix {
+                    match cell.location().values() {
+                        (0, 3) => {
+                            assert_eq!(
+                                *cell.data(),
+                                TerminalRendererMatrixCell {
+                                    background_color: None,
+                                    foreground_color: None,
+                                    display: '*',
+                                    layer_of_value: Layer::base(),
+                                }
+                            );
+                        }
+                        (5, 2) => {
+                            assert_eq!(
+                                *cell.data(),
+                                TerminalRendererMatrixCell {
+                                    background_color: None,
+                                    foreground_color: None,
+                                    display: 'A',
+                                    layer_of_value: Layer::base(),
+                                }
+                            );
+                        }
+                        _ => {
+                            assert_eq!(
+                                *cell.data(),
+                                TerminalRendererMatrixCell {
+                                    background_color: None,
+                                    foreground_color: None,
+                                    display: ' ',
+                                    layer_of_value: Layer::furthest_background(),
+                                }
+                            );
+                        }
+                    }
+                }
             }
 
             #[test]
-            fn entities_outside_of_the_camera_fov_are_not_rendered() {
-                let options = TerminalRendererOptions {
-                    screen_resolution: Dimensions2d::new(3, 3),
-                    include_screen_outline: false,
-                    include_default_camera: false,
-                };
-
-                let generated_renderer_systems = TerminalRendererSystemsGenerator::new().generate();
-
-                let after_update_system = &generated_renderer_systems
-                    .iter()
-                    .find(|(name, _)| *name == EVENT_AFTER_UPDATE)
-                    .unwrap()
-                    .1;
-
-                let mut em = EntityManager::new();
-                em.add_entity(vec![Box::new(TerminalTransform {
-                    coords: IntCoords2d::new(0, 0),
-                })]);
-                em.add_entity(vec![
-                    Box::new(TerminalRenderer {
-                        display: '^',
-                        layer: Layer::base(),
-                    }),
-                    Box::new(TerminalTransform {
-                        coords: IntCoords2d::new(1, 1),
-                    }),
-                ]);
-                em.add_entity(vec![
-                    Box::new(TerminalRenderer {
-                        display: '5',
-                        layer: Layer::base(),
-                    }),
-                    Box::new(TerminalTransform {
-                        coords: IntCoords2d::new(0, 0),
-                    }),
-                ]);
-                em.add_entity(vec![Box::new(TerminalTransform {
-                    coords: IntCoords2d::new(0, 0),
-                })]);
-                em.add_entity(vec![
-                    Box::new(TerminalRenderer {
-                        display: '@',
-                        layer: Layer::base(),
-                    }),
-                    Box::new(TerminalTransform {
-                        coords: IntCoords2d::new(2, 2),
-                    }),
-                ]);
-
-                let query_results = em.query(&after_update_system.queries()[0]);
-
-                let result = make_render_string(
+            fn higher_layer_renderable_appears_over_others_when_renderables_overlap() {
+                let matrix = make_render_matrix(
                     &TerminalCamera {
-                        field_of_view: Dimensions2d::new(3, 3),
+                        field_of_view: Dimensions2d::new(10, 10),
                         is_main: true,
                     },
                     &TerminalTransform {
-                        coords: IntCoords2d::new(2, 1),
+                        coords: IntCoords2d::zero(),
                     },
-                    &query_results,
-                    &options,
+                    &QueryResultList::new(vec![
+                        QueryResult::new(
+                            Entity(0),
+                            StoredComponentList::new(vec![
+                                Rc::new(RefCell::new(Box::new(TerminalRenderer {
+                                    display: '*',
+                                    layer: Layer::base(),
+                                    foreground_color: None,
+                                    background_color: None,
+                                }))),
+                                Rc::new(RefCell::new(Box::new(TerminalTransform {
+                                    coords: IntCoords2d::new(0, 3),
+                                }))),
+                            ]),
+                        ),
+                        QueryResult::new(
+                            Entity(1),
+                            StoredComponentList::new(vec![
+                                Rc::new(RefCell::new(Box::new(TerminalRenderer {
+                                    display: 'A',
+                                    layer: Layer::above(&Layer::base()),
+                                    foreground_color: None,
+                                    background_color: None,
+                                }))),
+                                Rc::new(RefCell::new(Box::new(TerminalTransform {
+                                    coords: IntCoords2d::new(5, 2),
+                                }))),
+                            ]),
+                        ),
+                        QueryResult::new(
+                            Entity(2),
+                            StoredComponentList::new(vec![
+                                Rc::new(RefCell::new(Box::new(TerminalRenderer {
+                                    display: '^',
+                                    layer: Layer::base(),
+                                    foreground_color: None,
+                                    background_color: None,
+                                }))),
+                                Rc::new(RefCell::new(Box::new(TerminalTransform {
+                                    coords: IntCoords2d::new(5, 2),
+                                }))),
+                            ]),
+                        ),
+                    ]),
+                    &TerminalRendererOptions {
+                        screen_resolution: Dimensions2d::new(10, 10),
+                        include_default_camera: true,
+                        default_foreground_color: None,
+                        default_background_color: None,
+                    },
                 );
 
-                assert_eq!(result, "\r\n   \r\n@  \r\n   \r\n")
+                for cell in &*matrix {
+                    match cell.location().values() {
+                        (0, 3) => {
+                            assert_eq!(
+                                *cell.data(),
+                                TerminalRendererMatrixCell {
+                                    background_color: None,
+                                    foreground_color: None,
+                                    display: '*',
+                                    layer_of_value: Layer::base(),
+                                }
+                            );
+                        }
+                        (5, 2) => {
+                            assert_eq!(
+                                *cell.data(),
+                                TerminalRendererMatrixCell {
+                                    background_color: None,
+                                    foreground_color: None,
+                                    display: 'A',
+                                    layer_of_value: Layer::above(&Layer::base()),
+                                }
+                            );
+                        }
+                        _ => {
+                            assert_eq!(
+                                *cell.data(),
+                                TerminalRendererMatrixCell {
+                                    background_color: None,
+                                    foreground_color: None,
+                                    display: ' ',
+                                    layer_of_value: Layer::furthest_background(),
+                                }
+                            );
+                        }
+                    }
+                }
             }
         }
 
-        mod with_screen_outline {
-            use crate::{EntityManager, IntCoords2d};
+        mod with_camera_offset {
+            use std::{cell::RefCell, rc::Rc};
+
+            use crate::{Entity, QueryResult, StoredComponentList};
 
             use super::*;
 
             #[test]
-            fn it_includes_all_renderable_entities() {
-                let options = TerminalRendererOptions {
-                    screen_resolution: Dimensions2d::new(3, 3),
-                    include_screen_outline: true,
-                    include_default_camera: false,
-                };
-
-                let generated_renderer_systems = TerminalRendererSystemsGenerator::new().generate();
-
-                let after_update_system = &generated_renderer_systems
-                    .iter()
-                    .find(|(name, _)| *name == EVENT_AFTER_UPDATE)
-                    .unwrap()
-                    .1;
-
-                let mut em = EntityManager::new();
-                em.add_entity(vec![Box::new(TerminalTransform {
-                    coords: IntCoords2d::new(0, 0),
-                })]);
-                em.add_entity(vec![
-                    Box::new(TerminalRenderer {
-                        display: '^',
-                        layer: Layer::base(),
-                    }),
-                    Box::new(TerminalTransform {
-                        coords: IntCoords2d::new(1, 1),
-                    }),
-                ]);
-                em.add_entity(vec![
-                    Box::new(TerminalRenderer {
-                        display: '5',
-                        layer: Layer::base(),
-                    }),
-                    Box::new(TerminalTransform {
-                        coords: IntCoords2d::new(0, 0),
-                    }),
-                ]);
-                em.add_entity(vec![Box::new(TerminalTransform {
-                    coords: IntCoords2d::new(0, 0),
-                })]);
-                em.add_entity(vec![
-                    Box::new(TerminalRenderer {
-                        display: '@',
-                        layer: Layer::base(),
-                    }),
-                    Box::new(TerminalTransform {
-                        coords: IntCoords2d::new(2, 2),
-                    }),
-                ]);
-
-                let query_results = em.query(&after_update_system.queries()[0]);
-
-                let result = make_render_string(
+            fn renderables_in_view_are_present() {
+                let matrix = make_render_matrix(
                     &TerminalCamera {
-                        field_of_view: Dimensions2d::new(3, 3),
+                        field_of_view: Dimensions2d::new(10, 10),
                         is_main: true,
                     },
                     &TerminalTransform {
-                        coords: IntCoords2d::zero(),
+                        coords: IntCoords2d::new(-6, 2),
                     },
-                    &query_results,
-                    &options,
-                );
-
-                assert_eq!(
-                    result,
-                    "\r\n/===\\\r\n|5  |\r\n| ^ |\r\n|  @|\r\n\\===/\r\n"
-                );
-            }
-
-            #[test]
-            fn values_on_higher_layer_overwrite_lower_layer_values() {
-                let options = TerminalRendererOptions {
-                    screen_resolution: Dimensions2d::new(3, 3),
-                    include_screen_outline: true,
-                    include_default_camera: false,
-                };
-
-                let generated_renderer_systems = TerminalRendererSystemsGenerator::new().generate();
-
-                let after_update_system = &generated_renderer_systems
-                    .iter()
-                    .find(|(name, _)| *name == EVENT_AFTER_UPDATE)
-                    .unwrap()
-                    .1;
-
-                let mut em = EntityManager::new();
-                em.add_entity(vec![Box::new(TerminalTransform {
-                    coords: IntCoords2d::new(0, 0),
-                })]);
-                em.add_entity(vec![
-                    Box::new(TerminalRenderer {
-                        display: '^',
-                        layer: Layer(1),
-                    }),
-                    Box::new(TerminalTransform {
-                        coords: IntCoords2d::new(2, 2),
-                    }),
-                ]);
-                em.add_entity(vec![
-                    Box::new(TerminalRenderer {
-                        display: '5',
-                        layer: Layer::base(),
-                    }),
-                    Box::new(TerminalTransform {
-                        coords: IntCoords2d::new(0, 0),
-                    }),
-                ]);
-                em.add_entity(vec![Box::new(TerminalTransform {
-                    coords: IntCoords2d::new(0, 0),
-                })]);
-                em.add_entity(vec![
-                    Box::new(TerminalRenderer {
-                        display: '@',
-                        layer: Layer::base(),
-                    }),
-                    Box::new(TerminalTransform {
-                        coords: IntCoords2d::new(2, 2),
-                    }),
-                ]);
-
-                let query_results = em.query(&after_update_system.queries()[0]);
-
-                let result = make_render_string(
-                    &TerminalCamera {
-                        field_of_view: Dimensions2d::new(3, 3),
-                        is_main: true,
+                    &QueryResultList::new(vec![
+                        QueryResult::new(
+                            Entity(0),
+                            StoredComponentList::new(vec![
+                                Rc::new(RefCell::new(Box::new(TerminalRenderer {
+                                    display: '*',
+                                    layer: Layer::base(),
+                                    foreground_color: None,
+                                    background_color: None,
+                                }))),
+                                Rc::new(RefCell::new(Box::new(TerminalTransform {
+                                    coords: IntCoords2d::new(0, 3),
+                                }))),
+                            ]),
+                        ),
+                        QueryResult::new(
+                            Entity(1),
+                            StoredComponentList::new(vec![
+                                Rc::new(RefCell::new(Box::new(TerminalRenderer {
+                                    display: 'A',
+                                    layer: Layer::base(),
+                                    foreground_color: None,
+                                    background_color: None,
+                                }))),
+                                Rc::new(RefCell::new(Box::new(TerminalTransform {
+                                    coords: IntCoords2d::new(5, 2),
+                                }))),
+                            ]),
+                        ),
+                        QueryResult::new(
+                            Entity(2),
+                            StoredComponentList::new(vec![
+                                Rc::new(RefCell::new(Box::new(TerminalRenderer {
+                                    display: 'B',
+                                    layer: Layer::base(),
+                                    foreground_color: None,
+                                    background_color: None,
+                                }))),
+                                Rc::new(RefCell::new(Box::new(TerminalTransform {
+                                    coords: IntCoords2d::new(-1, 2),
+                                }))),
+                            ]),
+                        ),
+                    ]),
+                    &TerminalRendererOptions {
+                        screen_resolution: Dimensions2d::new(10, 10),
+                        include_default_camera: true,
+                        default_foreground_color: None,
+                        default_background_color: None,
                     },
-                    &TerminalTransform {
-                        coords: IntCoords2d::zero(),
-                    },
-                    &query_results,
-                    &options,
                 );
 
-                assert_eq!(
-                    result,
-                    "\r\n/===\\\r\n|5  |\r\n|   |\r\n|  ^|\r\n\\===/\r\n"
-                );
+                for cell in &*matrix {
+                    match cell.location().values() {
+                        (5, 0) => {
+                            assert_eq!(
+                                *cell.data(),
+                                TerminalRendererMatrixCell {
+                                    background_color: None,
+                                    foreground_color: None,
+                                    display: 'B',
+                                    layer_of_value: Layer::base(),
+                                }
+                            );
+                        }
+                        (6, 1) => {
+                            assert_eq!(
+                                *cell.data(),
+                                TerminalRendererMatrixCell {
+                                    background_color: None,
+                                    foreground_color: None,
+                                    display: '*',
+                                    layer_of_value: Layer::base(),
+                                }
+                            );
+                        }
+                        _ => {
+                            assert_eq!(
+                                *cell.data(),
+                                TerminalRendererMatrixCell {
+                                    background_color: None,
+                                    foreground_color: None,
+                                    display: ' ',
+                                    layer_of_value: Layer::furthest_background(),
+                                }
+                            );
+                        }
+                    }
+                }
             }
         }
     }

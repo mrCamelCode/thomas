@@ -72,6 +72,8 @@ fn update_ui(results: Vec<QueryResultList>, commands: GameCommandsArg) {
                     Box::new(TerminalRenderer {
                         display: character,
                         layer: Layer::below(&Layer::furthest_foreground()),
+                        foreground_color: text.foreground_color,
+                        background_color: text.background_color,
                     }),
                     Box::new(TerminalTransform {
                         coords: starting_position + offset,
@@ -184,6 +186,8 @@ mod tests {
                         anchor: UiAnchor::TopLeft,
                         justification: Alignment::Left,
                         offset: IntCoords2d::zero(),
+                        foreground_color: None,
+                        background_color: None,
                     })))]),
                 ));
 
@@ -224,6 +228,8 @@ mod tests {
                         anchor: UiAnchor::MiddleTop,
                         justification: Alignment::Left,
                         offset: IntCoords2d::zero(),
+                        foreground_color: None,
+                        background_color: None,
                     })))]),
                 ));
 
@@ -264,6 +270,8 @@ mod tests {
                         anchor: UiAnchor::TopRight,
                         justification: Alignment::Left,
                         offset: IntCoords2d::zero(),
+                        foreground_color: None,
+                        background_color: None,
                     })))]),
                 ));
 
@@ -304,6 +312,8 @@ mod tests {
                         anchor: UiAnchor::MiddleRight,
                         justification: Alignment::Left,
                         offset: IntCoords2d::zero(),
+                        foreground_color: None,
+                        background_color: None,
                     })))]),
                 ));
 
@@ -344,6 +354,8 @@ mod tests {
                         anchor: UiAnchor::BottomRight,
                         justification: Alignment::Left,
                         offset: IntCoords2d::zero(),
+                        foreground_color: None,
+                        background_color: None,
                     })))]),
                 ));
 
@@ -384,6 +396,8 @@ mod tests {
                         anchor: UiAnchor::MiddleBottom,
                         justification: Alignment::Left,
                         offset: IntCoords2d::zero(),
+                        foreground_color: None,
+                        background_color: None,
                     })))]),
                 ));
 
@@ -424,6 +438,8 @@ mod tests {
                         anchor: UiAnchor::BottomLeft,
                         justification: Alignment::Left,
                         offset: IntCoords2d::zero(),
+                        foreground_color: None,
+                        background_color: None,
                     })))]),
                 ));
 
@@ -464,6 +480,8 @@ mod tests {
                         anchor: UiAnchor::MiddleLeft,
                         justification: Alignment::Left,
                         offset: IntCoords2d::zero(),
+                        foreground_color: None,
+                        background_color: None,
                     })))]),
                 ));
 
@@ -530,6 +548,8 @@ mod tests {
                         anchor: UiAnchor::TopLeft,
                         justification: Alignment::Left,
                         offset: IntCoords2d::zero(),
+                        foreground_color: None,
+                        background_color: None,
                     })))]),
                 ));
 
@@ -570,6 +590,8 @@ mod tests {
                         anchor: UiAnchor::MiddleTop,
                         justification: Alignment::Left,
                         offset: IntCoords2d::zero(),
+                        foreground_color: None,
+                        background_color: None,
                     })))]),
                 ));
 
@@ -610,6 +632,8 @@ mod tests {
                         anchor: UiAnchor::TopRight,
                         justification: Alignment::Left,
                         offset: IntCoords2d::zero(),
+                        foreground_color: None,
+                        background_color: None,
                     })))]),
                 ));
 
@@ -650,6 +674,8 @@ mod tests {
                         anchor: UiAnchor::MiddleRight,
                         justification: Alignment::Left,
                         offset: IntCoords2d::zero(),
+                        foreground_color: None,
+                        background_color: None,
                     })))]),
                 ));
 
@@ -690,6 +716,8 @@ mod tests {
                         anchor: UiAnchor::BottomRight,
                         justification: Alignment::Left,
                         offset: IntCoords2d::zero(),
+                        foreground_color: None,
+                        background_color: None,
                     })))]),
                 ));
 
@@ -730,6 +758,8 @@ mod tests {
                         anchor: UiAnchor::MiddleBottom,
                         justification: Alignment::Left,
                         offset: IntCoords2d::zero(),
+                        foreground_color: None,
+                        background_color: None,
                     })))]),
                 ));
 
@@ -770,6 +800,8 @@ mod tests {
                         anchor: UiAnchor::BottomLeft,
                         justification: Alignment::Left,
                         offset: IntCoords2d::zero(),
+                        foreground_color: None,
+                        background_color: None,
                     })))]),
                 ));
 
@@ -810,6 +842,8 @@ mod tests {
                         anchor: UiAnchor::MiddleLeft,
                         justification: Alignment::Left,
                         offset: IntCoords2d::zero(),
+                        foreground_color: None,
+                        background_color: None,
                     })))]),
                 ));
 

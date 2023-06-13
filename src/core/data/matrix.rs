@@ -1,6 +1,7 @@
 use super::{Dimensions2d, IntCoords2d};
 
 /// A 2D matrix with defined iteration order.
+#[derive(Debug)]
 pub struct Matrix<T> {
     matrix: Vec<Vec<MatrixCell<T>>>,
     dimensions: Dimensions2d,
@@ -42,14 +43,39 @@ impl<T> Matrix<T> {
         }
     }
 
+    pub fn dimensions(&self) -> &Dimensions2d {
+        &self.dimensions
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &MatrixCell<T>> {
+        self.into_iter()
+    }
+}
+impl<T> PartialEq for Matrix<T>
+where
+    T: PartialEq + Eq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.dimensions == other.dimensions
+            && self.iter().all(|cell| {
+                cell.data
+                    == other.matrix[cell.location.y() as usize][cell.location.x() as usize].data
+            })
+    }
+}
+impl<'a, T> IntoIterator for &'a Matrix<T> {
+    type Item = <std::slice::Iter<'a, MatrixCell<T>> as Iterator>::Item;
+    type IntoIter = MatrixIter<'a, T>;
+
     /// Produces an interator that iterates over the cells in the Matrix from
     /// the top left to bottom right, scanning to the end of a row before going
     /// to the next.
-    pub fn iter(&self) -> MatrixIter<T> {
+    fn into_iter(self) -> Self::IntoIter {
         MatrixIter::new(&self.matrix)
     }
 }
 
+#[derive(Debug)]
 pub struct MatrixCell<T> {
     location: IntCoords2d,
     data: T,
@@ -107,7 +133,7 @@ impl<'a, T> Iterator for MatrixIter<'a, T> {
 mod tests {
     use super::*;
 
-    mod iter {
+    mod test_iter {
         use super::*;
 
         #[test]
@@ -116,9 +142,9 @@ mod tests {
 
             let mut result = String::new();
 
-            matrix.iter().for_each(|cell| {
+            for cell in &matrix {
                 result += format!("{:?}\n", cell.location.values()).as_str();
-            });
+            }
 
             let expected = String::from(
                 "(0, 0)
@@ -140,7 +166,7 @@ mod tests {
         }
     }
 
-    mod update_cell_at {
+    mod test_update_cell_at {
         use super::*;
 
         #[test]
@@ -173,6 +199,36 @@ mod tests {
                 .join(", ");
 
             assert_eq!(original_data, new_data);
+        }
+    }
+
+    mod test_eq {
+        use super::*;
+
+        #[test]
+        fn two_equivalent_matrices_are_equal() {
+            let m1 = Matrix::new(Dimensions2d::new(20, 20), || 10);
+            let m2 = Matrix::new(Dimensions2d::new(20, 20), || 10);
+
+            assert!(m1 == m2);
+        }
+
+        #[test]
+        fn two_different_matrices_are_not_equal() {
+            let m1 = Matrix::new(Dimensions2d::new(20, 20), || 10);
+            let mut m2 = Matrix::new(Dimensions2d::new(20, 20), || 10);
+
+            m2.update_cell_at(15, 3, 100);
+
+            assert!(m1 != m2);
+        }
+
+        #[test]
+        fn two_matrices_of_different_sizes_are_not_equal() {
+            let m1 = Matrix::new(Dimensions2d::new(10, 20), || 10);
+            let m2 = Matrix::new(Dimensions2d::new(20, 20), || 10);
+
+            assert!(m1 != m2);
         }
     }
 }
