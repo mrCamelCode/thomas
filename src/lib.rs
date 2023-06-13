@@ -9,5 +9,4 @@ pub use components::*;
 
 pub use thomas_derive::*;
 
-pub use crossterm::style::Color;
 pub use device_query::Keycode;

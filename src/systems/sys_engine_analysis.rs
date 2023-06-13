@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use crate::{
     Alignment, EngineStats, GameCommand, GameCommandsArg, Identity, IntCoords2d, Query,
-    QueryResultList, System, SystemsGenerator, Text, Timer, UiAnchor, EVENT_BEFORE_UPDATE,
+    QueryResultList, Rgb, System, SystemsGenerator, Text, Timer, UiAnchor, EVENT_BEFORE_UPDATE,
     EVENT_INIT, EVENT_UPDATE,
 };
 
@@ -58,6 +58,8 @@ impl SystemsGenerator for EngineAnalysisSystemsGenerator {
                                 justification: Alignment::Left,
                                 offset: IntCoords2d::zero(),
                                 value: String::from(""),
+                                foreground_color: Some(Rgb::magenta()),
+                                background_color: None,
                             }),
                             Box::new(Identity {
                                 id: String::from(FPS_TRACKER_ID),

@@ -53,6 +53,8 @@ pub struct GameOptions {
 ///             justification: Alignment::Left,
 ///             offset: IntCoords2d::zero(),
 ///             value: String::from("Hello Thomas!"),
+///             foreground_color: None,
+///             background_color: None,
 ///         }),
 ///     ]));
 /// }));
@@ -61,7 +63,6 @@ pub struct GameOptions {
 /// //     include_screen_outline: true,
 /// //     include_default_camera: true,
 /// // }));
-///     
 /// ```
 pub struct Game {
     entity_manager: EntityManager,
