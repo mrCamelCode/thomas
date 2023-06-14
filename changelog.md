@@ -1,4 +1,10 @@
-# Next
+# 0.2.2
+## Bugfixes
+  - The `TerminalRenderer` no longer gets confused when working with a moving camera, and it cleans up after itself better.
+## Updates
+- Added `is_any_key...` methods to `Input`.
+
+# 0.2.1
 
 ## Updates
 - Color is now supported! Use `Rgb` to define colors for the renderer to use for entities. Colors are optional, and the default foreground and background colors you gave the renderer on `start` are used if no value is provided for a particular component that supports color. If you didn't provide a default for either the foreground or background, the color is `Reset`, which just uses the terminal's default.

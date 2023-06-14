@@ -60,6 +60,30 @@ impl Input {
         false
     }
 
+    /// Whether any key was pressed down this frame.
+    pub fn is_any_key_down(&self) -> bool {
+        self.keylogger.values().any(|key_state_data| {
+            return key_state_data.current_state == KeyState::Down
+                && key_state_data.prev_state == KeyState::Up;
+        })
+    }
+
+    /// Whether any key was released this frame.
+    pub fn is_any_key_up(&self) -> bool {
+        self.keylogger.values().any(|key_state_data| {
+            return key_state_data.current_state == KeyState::Up
+                && key_state_data.prev_state == KeyState::Down;
+        })
+    }
+
+    /// Whether any key is pressed. This will return `true` on every frame while the key is pressed
+    /// down. If you want to do something on the one frame in which any key was pressed down, use `is_any_key_down`.
+    pub fn is_any_key_pressed(&self) -> bool {
+        self.keylogger.values().any(|key_state_data| {
+            return key_state_data.current_state == KeyState::Down;
+        })
+    }
+
     /// Whether all the provided keys are currently pressed. This version of the method will return `true` even if other keys
     /// outside the chord are currently being pressed. For an exclusive chord, use `is_chord_pressed_exclusively`.
     pub fn is_chord_pressed(&self, keycodes: &[&Keycode]) -> bool {
