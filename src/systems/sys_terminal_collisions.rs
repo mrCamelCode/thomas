@@ -7,7 +7,7 @@ use crate::{
 };
 
 /// A generator responsible for setting up and performing collision detection between active `TerminalCollider`s in
-/// the world. This must be added to the world for collisions to be generated.
+/// the world. This systems generator is included for you, you don't need to include it.
 /// 
 /// As it's impossible for Thomas to know exactly what you want to do when two bodies collide, you'll need to implement
 /// your own collision processing systems. When a collision occurs, an entity with a `TerminalCollision` component is added

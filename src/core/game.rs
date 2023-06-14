@@ -4,8 +4,9 @@ use device_query::Keycode;
 
 use crate::{
     Component, Entity, EntityManager, Input, Query, ServicesSystemsGenerator, System,
-    SystemsGenerator, TerminalRendererOptions, TerminalRendererState,
-    TerminalRendererSystemsGenerator, Timer,
+    SystemsGenerator, TerminalCollisionsSystemsGenerator, TerminalRendererOptions,
+    TerminalRendererState, TerminalRendererSystemsGenerator, TerminalUiRendererSystemsGenerator,
+    Timer,
 };
 
 pub type GameCommandsArg = Rc<RefCell<GameCommandQueue>>;
@@ -231,6 +232,8 @@ impl Game {
             },
         ))
         .add_systems_from_generator(ServicesSystemsGenerator::new())
+        .add_systems_from_generator(TerminalCollisionsSystemsGenerator::new())
+        .add_systems_from_generator(TerminalUiRendererSystemsGenerator::new())
     }
 
     fn process_command_queue(&mut self, commands: GameCommandsArg) {
@@ -304,7 +307,6 @@ impl<'a> IntoIterator for &'a GameCommandQueue {
         (&self.queue).into_iter()
     }
 }
-
 
 #[cfg(test)]
 mod tests {

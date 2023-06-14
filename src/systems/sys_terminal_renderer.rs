@@ -5,7 +5,10 @@ use std::{
 
 use crossterm::{
     cursor, execute,
-    style::{Color, Print, ResetColor, SetBackgroundColor, SetForegroundColor},
+    style::{
+        Color, Print, PrintStyledContent, ResetColor, SetBackgroundColor, SetForegroundColor,
+        Stylize,
+    },
     terminal::{self, disable_raw_mode, enable_raw_mode, Clear, ClearType, SetSize},
 };
 
@@ -246,15 +249,17 @@ fn draw(
             if let Err(e) = execute!(
                 stdout(),
                 cursor::MoveTo(x as u16, y as u16),
-                SetForegroundColor(get_crossterm_color(
-                    &new_cell.data().foreground_color,
-                    &renderer_options.default_foreground_color
-                )),
-                SetBackgroundColor(get_crossterm_color(
-                    &new_cell.data().background_color,
-                    &renderer_options.default_background_color
-                )),
-                Print(new_cell.data().display),
+                PrintStyledContent(
+                    String::from(new_cell.data().display)
+                        .with(get_crossterm_color(
+                            &new_cell.data().foreground_color,
+                            &renderer_options.default_foreground_color
+                        ))
+                        .on(get_crossterm_color(
+                            &new_cell.data().background_color,
+                            &renderer_options.default_background_color
+                        ))
+                ),
             ) {
                 panic!(
                     "Error occurred while trying to write at position ({}, {}): {e}",

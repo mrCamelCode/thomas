@@ -6,11 +6,8 @@ use crate::{
     TerminalTransform, Text, UiAnchor, WorldText, EVENT_UPDATE,
 };
 
-/// A generator responsible for setting up and performing UI rendering in a terminal game. This must be added to the game
-/// to enable UI rendering.
-///
-/// UI is positioned according to the screen space of the main camera. Even if the camera moves, UI elements will always
-/// remain in the same location relative to the camera.
+/// A generator responsible for setting up and performing UI rendering in a terminal game. This systems generator is
+/// included for you, you don't need to include it.
 pub struct TerminalUiRendererSystemsGenerator {}
 impl TerminalUiRendererSystemsGenerator {
     pub fn new() -> Self {

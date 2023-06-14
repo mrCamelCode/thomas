@@ -1,3 +1,8 @@
+# 0.2.3
+## Updates
+  - Minor improvements
+  - UI rendering and collisions are now included by default in terminal applications.
+
 # 0.2.2
 ## Bugfixes
   - The `TerminalRenderer` no longer gets confused when working with a moving camera, and it cleans up after itself better.
