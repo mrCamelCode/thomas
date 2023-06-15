@@ -5,10 +5,7 @@ use std::{
 
 use crossterm::{
     cursor, execute,
-    style::{
-        Color, Print, PrintStyledContent, ResetColor, SetBackgroundColor, SetForegroundColor,
-        Stylize,
-    },
+    style::{Color, PrintStyledContent, ResetColor, Stylize},
     terminal::{self, disable_raw_mode, enable_raw_mode, Clear, ClearType, SetSize},
 };
 

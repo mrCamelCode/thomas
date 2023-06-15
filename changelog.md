@@ -1,3 +1,8 @@
+# Next
+## Updates
+  - Minor improvements.
+  - Added `TerminalCollision::is_collision_between` convenience function.
+
 # 0.2.3
 ## Updates
   - Minor improvements
