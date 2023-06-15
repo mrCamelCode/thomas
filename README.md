@@ -68,7 +68,7 @@ Game::new(GameOptions {
 }));
 ```
 
-If you run that, you'll just get an outline of a screen in the terminal that's not doing anything. That's because we haven't put anything in the game! We can change that by adding an entity to the world, like an entity that represents our player. Since our player is something that should be in the game from the start, we can add the player to the world as part of the `init` event. We'll do that by adding a `System` to the `init` event. All systems are just added to events the engine uses internally to control the flow of system invocation. While there are more events available, most application code will use the `init`, `update`, and `cleanup` events.
+If you run that, you'll just get a blank screen in the terminal that's not doing anything. That's because we haven't put anything in the game! We can change that by adding an entity to the world, like an entity that represents our player. Since our player is something that should be in the game from the start, we can add the player to the world as part of the `init` event. We'll do that by adding a `System` to the `init` event. All systems are just added to events the engine uses internally to control the flow of system invocation. While there are more events available, most application code will use the `init`, `update`, and `cleanup` events.
 
 `init` systems run exactly **one time** before the main game loop starts.
 
