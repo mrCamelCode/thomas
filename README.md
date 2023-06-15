@@ -36,7 +36,7 @@ While you may have seen other ECS solutions out there like Bevy and Flecs, Thoma
 
 ### Systems are a bit more than just functions
 
-A principle of ECS is that all game logic happens within systems. Systems have access to and know what to operate on via a query that runs against whatever internal mechanism the engine has provided for representing the game world in memory. With queries being so tightly associated to systems, Thomas sees queries as being intrinsically tied to systems, so `System`s as you'll see them in Thomas are `struct`s that hold their `Query`s as well as the function that operates on the results of those `Query`s. This inherently keeps related information together.
+A principle of ECS is that all game logic happens within systems. Systems have access to and know which components to operate on via a query that runs against whatever internal mechanism the engine has provided for representing the game world in memory. With queries being so tightly associated to systems, Thomas sees queries as being intrinsically tied to systems, so `System`s as you'll see them in Thomas are `struct`s that hold their `Query`s as well as the function that operates on the results of those `Query`s. This inherently keeps related information together.
 
 ### Queries are evaluated at runtime
 
@@ -64,7 +64,6 @@ Game::new(GameOptions {
   max_frame_rate: 30
 }).start(Renderer::Terminal(TerminalRendererOptions {
   screen_resolution: Dimensions2d::new(10, 30),
-  include_screen_outline: true,
   include_default_camera: true,
 }));
 ```
@@ -101,7 +100,6 @@ Game::new(GameOptions {
 }))
 .start(Renderer::Terminal(TerminalRendererOptions {
   screen_resolution: Dimensions2d::new(10, 30),
-  include_screen_outline: true,
   include_default_camera: true,
 }));
 ```
@@ -164,7 +162,6 @@ Game::new(GameOptions {
 }))
 .start(Renderer::Terminal(TerminalRendererOptions {
   screen_resolution: Dimensions2d::new(10, 30),
-  include_screen_outline: true,
   include_default_camera: true,
 }));
 ```
@@ -224,7 +221,7 @@ for movable_result in movables_results
 
 In this case, our `movables_results` is a `Vec<QueryResultList>` where we're _not_ guaranteed to always only have a single result. The query currently yields all `TerminalTransform`s in the world (so long as the entity doesn't also have a `TerminalCamera`). While our player is currently the only thing that will match this query, that's unlikely to stay true for very long as our game develops and we add more things like NPCs. Because of that, this `System` should operate on all the results of the query.
 
-Every element in a `QueryResultList` is a `QueryResult`. A `QueryResult` represents a _single_ entity that matched the constraints specified by the query. The `QueryResult` also contains references to the component instances on that entity that we asked for in our `Query`. In our case, we're looking through the world for all entities with a `TerminalTransform` component, so every result will represent a _different_ entity and each result will have _that_ entity's reference to `TerminalTransform` available to use. To see how this plays out, try adding another entity to the world in our `init` system that also has the `TerminalTransform` and `TerminalRenderer` components.
+Every element in a `QueryResultList` is a `QueryResult`. A `QueryResult` represents a _single_ entity that matched the constraints specified by the query. The `QueryResult` also contains references to the component instances on that entity that we asked for in our `Query`. In our case, we're looking through the world for all entities with a `TerminalTransform` component, so every result will represent a _different_ entity and each result will have _that_ entity's reference to `TerminalTransform` available to use. To see how this plays out, try adding another entity to the world in our `init` system that also has the `TerminalTransform` component.
 
 Next, we have the line:
 
@@ -242,7 +239,7 @@ let renderer = movable_result.get::<TerminalRenderer>();
 
 The application would panic. While the entity we matched on would also have a `TerminalRenderer` in our particular case, we didn't query for that component, so it's not in our results. That's an important detail to keep in mind: when your query produces a match, it only makes the components you _asked for_ available. It does _not_ give you access to all the components on that particular entity.
 
-If you don't like the assertiveness of `get` and `get_mut`, you can use their safer alternatives: `try_get` and `try_get_mut`.
+If you don't like the assertiveness of `get` and `get_mut`, you can use their safer alternatives: `try_get` and `try_get_mut`. However, it should be noted that a panic from `get` and `get_mut` indicate a problem with either your `Query` or `System` which should be corrected. If you receive a panic from one of those methods, you're trying to operate on something you're not querying for. In this case, you should either update your `Query` to include the component, or correct the `System` to only operate on what it's querying for. Because of this tendency to reveal incorrect systems/queries, you should generally prefer using `get` and `get_mut`.
 
 Finally, the meat of the `System`'s logic:
 
@@ -270,8 +267,8 @@ Why not try experimenting with moving the _camera_ around instead of the player?
 
 And that's it! Those are the basics of Thomas, but there are plenty of other things the engine provides you to help you make a game quickly and easily. For example, our little game here has a few problems:
 
-1. We're currently putting all our logic into the creation of our `Game`. As the game grows, this file will become nigh unreadable! Breaking your logic out into separate units you can organize easier can be done with `SystemsGenerator`s.
-2. Our movement system currently operates on _every_ entity that has a `TerminalTransform` (and no `TerminalCamera`). In a real game, that's unlikely to be what we want. We probably only want to move the player around. You could try to refine the query to make sure only the player is ever matched on, or you could make your own custom `Component` that behaves like a marker to make writing queries that match on just the player entity easier.
+1. We're currently putting all our logic into the creation of our `Game`. As the game grows, this file will become nigh unreadable! Breaking your logic out into separate units you can organize more easily can be done with `SystemsGenerator`s.
+2. Our movement system currently operates on _every_ entity that has a `TerminalTransform` (and no `TerminalCamera`). In a real game, that's unlikely to be what we want. We probably only want to move the player around. You could try to refine the query to make sure only the player is ever matched on, or you could make your own custom `Component` that behaves like a marker to make writing queries that match on just the player entity easier. You might also consider using the `Identity` component.
 3. If we change our movement `System` to use `is_key_pressed` to give our player's finger a break, everything might seem okay at first until you change the `max_frame_rate` of the game. You may notice that our movement is framerate-dependent. Ew! What is this, Dark Souls? We'd probably want to make a custom `Component` that keeps track of a `Timer` that lets us control how quickly translations can be applied to our player. Maybe that's a useful piece of information to include on a custom `Player` component?
 
 To see examples of all these techniques and more (like UI and collisions) in action, check out the [demo](https://github.com/mrCamelCode/space_invaders) I mentioned earlier! It's a simple game inspired by Space Invaders.
