@@ -1,4 +1,6 @@
 # Next
+## Breaking Changes
+  - Priority's convenience methods (`lower_than`, `higher_than`) now only borrow the other Priority 
 ## Updates
   - Minor improvements.
   - Added `TerminalCollision::is_collision_between` convenience function.
