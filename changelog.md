@@ -2,6 +2,7 @@
 ## Updates
   - Minor improvements.
   - Added `TerminalCollision::is_collision_between` convenience function.
+  - Improved FPS tracking of engine analysis.
 
 # 0.2.3
 ## Updates
