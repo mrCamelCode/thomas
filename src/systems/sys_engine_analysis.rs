@@ -93,8 +93,8 @@ fn gather_stats(results: Vec<QueryResultList>, _: GameCommandsArg) {
         }
 
         if engine_stats.frame_timer.elapsed_millis() >= 1000 {
-            engine_stats.frame_counter = 0;
             engine_stats.fps = engine_stats.frame_counter;
+            engine_stats.frame_counter = 0;
 
             engine_stats.frame_timer.restart();
         }
