@@ -18,7 +18,7 @@ use crate::{
 const TERMINAL_DIMENSIONS_PADDING: u16 = 0;
 
 #[derive(Component, Debug)]
-pub(crate) struct TerminalRendererState {
+pub struct TerminalRendererState {
     initial_terminal_size: (u16, u16),
     pub options: TerminalRendererOptions,
     prev_render: Option<TerminalRendererMatrix>,
@@ -233,6 +233,8 @@ fn draw(
         renderer_options,
     );
 
+    let mut drawn_matrix = TerminalRendererMatrix::new_empty(*new_render_matrix.dimensions());
+
     for new_cell in &*new_render_matrix {
         let (x, y) = new_cell.location().values();
 
@@ -242,18 +244,20 @@ fn draw(
             None
         };
 
-        if prev_cell.is_none() || new_cell.data() != prev_cell.unwrap().data() {
+        let cell_data_to_draw = get_cell_data_to_display(&new_cell.data());
+
+        if prev_cell.is_none() || cell_data_to_draw != prev_cell.unwrap().data()[0] {
             if let Err(e) = execute!(
                 stdout(),
                 cursor::MoveTo(x as u16, y as u16),
                 PrintStyledContent(
-                    String::from(new_cell.data().display)
+                    String::from(cell_data_to_draw.display)
                         .with(get_crossterm_color(
-                            &new_cell.data().foreground_color,
+                            &cell_data_to_draw.foreground_color,
                             &renderer_options.default_foreground_color
                         ))
                         .on(get_crossterm_color(
-                            &new_cell.data().background_color,
+                            &cell_data_to_draw.background_color,
                             &renderer_options.default_background_color
                         ))
                 ),
@@ -264,9 +268,53 @@ fn draw(
                 );
             }
         }
+
+        drawn_matrix.update_cell_at(x as u64, y as u64, vec![cell_data_to_draw]);
     }
 
-    new_render_matrix
+    drawn_matrix
+}
+
+/// Goes through the provided collection and returns cell item data that should be rendered. For most data, the cell item
+/// closest to the foreground is what should be rendered, with the exception of background color.
+/// The rules for what background color should be used are determined by assuming a color of `None` correlates
+/// to transparency. The cell closest to the foreground is given precedence. If it has a background color, that
+/// color is used. If it has no background color, all cells underneath are considered in descending order of layer.
+/// The first background color that's `Some` is what's returned.
+fn get_cell_data_to_display<'a>(
+    collection: &'a Vec<TerminalRendererMatrixCellItem>,
+) -> TerminalRendererMatrixCellItem {
+    // TODO: An optimization could be using a structure here that sorts on insert instead of sorting the Vec after the fact.
+    // Could also avoid cloning the vec in that case.
+    let mut sorted_collection = collection.to_vec();
+    sorted_collection.sort_by(|a, b| {
+        a.layer_of_value
+            .value()
+            .partial_cmp(&b.layer_of_value.value())
+            .unwrap()
+    });
+
+    let background_color: Option<Rgb> = if let Some(cell_item_with_background_color) =
+        sorted_collection
+            .iter()
+            .rev()
+            .find(|cell_item| cell_item.background_color.is_some())
+    {
+        cell_item_with_background_color.background_color
+    } else {
+        None
+    };
+
+    let topmost_item = sorted_collection
+        .last()
+        .expect("There's at least one cell item.");
+
+    TerminalRendererMatrixCellItem {
+        display: topmost_item.display,
+        layer_of_value: topmost_item.layer_of_value,
+        foreground_color: topmost_item.foreground_color,
+        background_color,
+    }
 }
 
 fn get_crossterm_color(color_option: &Option<Rgb>, default_color_option: &Option<Rgb>) -> Color {
@@ -318,21 +366,13 @@ fn make_render_matrix(
                 renderable_screen_position.y() as u64,
             );
 
-            if let Some(cell) = render_matrix.get(x, y) {
-                if layer.is_above(&cell.data().layer_of_value)
-                    || layer.is_with(&cell.data().layer_of_value)
-                {
-                    render_matrix.update_cell_at(
-                        x,
-                        y,
-                        TerminalRendererMatrixCell {
-                            display: *display,
-                            layer_of_value: *layer,
-                            foreground_color: *foreground_color,
-                            background_color: *background_color,
-                        },
-                    );
-                }
+            if let Some(cell) = render_matrix.get_mut(x, y) {
+                cell.data_mut().push(TerminalRendererMatrixCellItem {
+                    display: *display,
+                    layer_of_value: *layer,
+                    foreground_color: *foreground_color,
+                    background_color: *background_color,
+                });
             }
         }
     }
@@ -372,9 +412,15 @@ pub struct TerminalRendererOptions {
 
 #[derive(Debug)]
 struct TerminalRendererMatrix {
-    matrix: Matrix<TerminalRendererMatrixCell>,
+    matrix: Matrix<Vec<TerminalRendererMatrixCellItem>>,
 }
 impl TerminalRendererMatrix {
+    fn new_empty(dimensions: Dimensions2d) -> Self {
+        Self {
+            matrix: Matrix::new(dimensions, || vec![]),
+        }
+    }
+
     fn new(
         dimensions: Dimensions2d,
         default_background_color: Option<Rgb>,
@@ -382,16 +428,16 @@ impl TerminalRendererMatrix {
     ) -> Self {
         Self {
             matrix: Matrix::new(dimensions, || {
-                TerminalRendererMatrixCell::default(
+                vec![TerminalRendererMatrixCellItem::default(
                     default_background_color,
                     default_foreground_color,
-                )
+                )]
             }),
         }
     }
 }
 impl Deref for TerminalRendererMatrix {
-    type Target = Matrix<TerminalRendererMatrixCell>;
+    type Target = Matrix<Vec<TerminalRendererMatrixCellItem>>;
 
     fn deref(&self) -> &Self::Target {
         &self.matrix
@@ -403,14 +449,14 @@ impl DerefMut for TerminalRendererMatrix {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-struct TerminalRendererMatrixCell {
+#[derive(Debug, PartialEq, Eq, Clone)]
+struct TerminalRendererMatrixCellItem {
     display: char,
     layer_of_value: Layer,
     foreground_color: Option<Rgb>,
     background_color: Option<Rgb>,
 }
-impl TerminalRendererMatrixCell {
+impl TerminalRendererMatrixCellItem {
     fn default(
         default_background_color: Option<Rgb>,
         default_foreground_color: Option<Rgb>,
@@ -497,6 +543,130 @@ mod tests {
         }
     }
 
+    mod test_get_cell_data_to_display {
+        use super::*;
+
+        #[test]
+        fn the_topmost_cell_data_is_used() {
+            let collection = vec![
+                TerminalRendererMatrixCellItem {
+                    background_color: None,
+                    foreground_color: None,
+                    display: '*',
+                    layer_of_value: Layer(3),
+                },
+                TerminalRendererMatrixCellItem {
+                    background_color: None,
+                    foreground_color: Some(Rgb::white()),
+                    display: 'A',
+                    layer_of_value: Layer(6),
+                },
+                TerminalRendererMatrixCellItem {
+                    background_color: None,
+                    foreground_color: Some(Rgb::black()),
+                    display: ' ',
+                    layer_of_value: Layer(0),
+                },
+                TerminalRendererMatrixCellItem {
+                    background_color: None,
+                    foreground_color: Some(Rgb::magenta()),
+                    display: 'B',
+                    layer_of_value: Layer(4),
+                },
+            ];
+
+            assert_eq!(
+                get_cell_data_to_display(&collection),
+                TerminalRendererMatrixCellItem {
+                    display: 'A',
+                    background_color: None,
+                    foreground_color: Some(Rgb::white()),
+                    layer_of_value: Layer(6),
+                }
+            );
+        }
+
+        #[test]
+        fn the_topmost_background_color_is_used_when_not_none() {
+            let collection = vec![
+                TerminalRendererMatrixCellItem {
+                    background_color: Some(Rgb::red()),
+                    foreground_color: None,
+                    display: '*',
+                    layer_of_value: Layer(3),
+                },
+                TerminalRendererMatrixCellItem {
+                    background_color: Some(Rgb::green()),
+                    foreground_color: Some(Rgb::white()),
+                    display: 'A',
+                    layer_of_value: Layer(6),
+                },
+                TerminalRendererMatrixCellItem {
+                    background_color: Some(Rgb::cyan()),
+                    foreground_color: Some(Rgb::black()),
+                    display: ' ',
+                    layer_of_value: Layer(0),
+                },
+                TerminalRendererMatrixCellItem {
+                    background_color: Some(Rgb::white()),
+                    foreground_color: Some(Rgb::magenta()),
+                    display: 'B',
+                    layer_of_value: Layer(4),
+                },
+            ];
+
+            assert_eq!(
+                get_cell_data_to_display(&collection),
+                TerminalRendererMatrixCellItem {
+                    display: 'A',
+                    background_color: Some(Rgb::green()),
+                    foreground_color: Some(Rgb::white()),
+                    layer_of_value: Layer(6),
+                }
+            );
+        }
+
+        #[test]
+        fn the_first_some_background_color_used_when_topmost_background_color_is_none() {
+            let collection = vec![
+                TerminalRendererMatrixCellItem {
+                    background_color: Some(Rgb::red()),
+                    foreground_color: None,
+                    display: '*',
+                    layer_of_value: Layer(3),
+                },
+                TerminalRendererMatrixCellItem {
+                    background_color: None,
+                    foreground_color: Some(Rgb::white()),
+                    display: 'A',
+                    layer_of_value: Layer(6),
+                },
+                TerminalRendererMatrixCellItem {
+                    background_color: Some(Rgb::cyan()),
+                    foreground_color: Some(Rgb::black()),
+                    display: ' ',
+                    layer_of_value: Layer(0),
+                },
+                TerminalRendererMatrixCellItem {
+                    background_color: None,
+                    foreground_color: Some(Rgb::magenta()),
+                    display: 'B',
+                    layer_of_value: Layer(4),
+                },
+            ];
+
+            assert_eq!(
+                get_cell_data_to_display(&collection),
+                TerminalRendererMatrixCellItem {
+                    display: 'A',
+                    background_color: Some(Rgb::red()),
+                    foreground_color: Some(Rgb::white()),
+                    layer_of_value: Layer(6),
+                }
+            );
+        }
+    }
+
     mod test_get_crossterm_color {
         use super::*;
 
@@ -544,12 +714,12 @@ mod tests {
         #[test]
         fn equivalent_cells_are_equal() {
             assert!(
-                TerminalRendererMatrixCell {
+                TerminalRendererMatrixCellItem {
                     display: ' ',
                     layer_of_value: Layer::base(),
                     background_color: None,
                     foreground_color: None,
-                } == TerminalRendererMatrixCell {
+                } == TerminalRendererMatrixCellItem {
                     display: ' ',
                     layer_of_value: Layer::base(),
                     background_color: None,
@@ -561,12 +731,12 @@ mod tests {
         #[test]
         fn cells_with_different_display_are_not_equal() {
             assert!(
-                TerminalRendererMatrixCell {
+                TerminalRendererMatrixCellItem {
                     display: ' ',
                     layer_of_value: Layer::base(),
                     background_color: None,
                     foreground_color: None,
-                } != TerminalRendererMatrixCell {
+                } != TerminalRendererMatrixCellItem {
                     display: '*',
                     layer_of_value: Layer::base(),
                     background_color: None,
@@ -578,12 +748,12 @@ mod tests {
         #[test]
         fn cells_with_different_layer_are_not_equal() {
             assert!(
-                TerminalRendererMatrixCell {
+                TerminalRendererMatrixCellItem {
                     display: ' ',
                     layer_of_value: Layer::furthest_foreground(),
                     background_color: None,
                     foreground_color: None,
-                } != TerminalRendererMatrixCell {
+                } != TerminalRendererMatrixCellItem {
                     display: ' ',
                     layer_of_value: Layer::base(),
                     background_color: None,
@@ -595,12 +765,12 @@ mod tests {
         #[test]
         fn cells_with_different_background_color_are_not_equal() {
             assert!(
-                TerminalRendererMatrixCell {
+                TerminalRendererMatrixCellItem {
                     display: ' ',
                     layer_of_value: Layer::base(),
                     background_color: None,
                     foreground_color: None,
-                } != TerminalRendererMatrixCell {
+                } != TerminalRendererMatrixCellItem {
                     display: ' ',
                     layer_of_value: Layer::base(),
                     background_color: Some(Rgb::white()),
@@ -612,12 +782,12 @@ mod tests {
         #[test]
         fn cells_with_different_foreground_color_are_not_equal() {
             assert!(
-                TerminalRendererMatrixCell {
+                TerminalRendererMatrixCellItem {
                     display: ' ',
                     layer_of_value: Layer::base(),
                     background_color: None,
                     foreground_color: None,
-                } != TerminalRendererMatrixCell {
+                } != TerminalRendererMatrixCellItem {
                     display: ' ',
                     layer_of_value: Layer::base(),
                     background_color: None,
@@ -689,8 +859,8 @@ mod tests {
                     match cell.location().values() {
                         (0, 3) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: '*',
@@ -700,8 +870,8 @@ mod tests {
                         }
                         (5, 2) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'A',
@@ -711,8 +881,8 @@ mod tests {
                         }
                         _ => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[0],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: ' ',
@@ -790,8 +960,8 @@ mod tests {
                     match cell.location().values() {
                         (0, 3) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: '*',
@@ -801,8 +971,8 @@ mod tests {
                         }
                         (5, 2) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'A',
@@ -812,8 +982,8 @@ mod tests {
                         }
                         _ => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[0],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: ' ',
@@ -891,8 +1061,8 @@ mod tests {
                     match cell.location().values() {
                         (0, 3) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: '*',
@@ -902,8 +1072,8 @@ mod tests {
                         }
                         (5, 2) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'A',
@@ -913,8 +1083,8 @@ mod tests {
                         }
                         _ => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[0],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: ' ',
@@ -992,8 +1162,8 @@ mod tests {
                     match cell.location().values() {
                         (0, 3) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: '*',
@@ -1003,8 +1173,8 @@ mod tests {
                         }
                         (5, 2) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'A',
@@ -1014,8 +1184,8 @@ mod tests {
                         }
                         _ => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[0],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: ' ',
@@ -1093,8 +1263,8 @@ mod tests {
                     match cell.location().values() {
                         (0, 3) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: '*',
@@ -1104,8 +1274,8 @@ mod tests {
                         }
                         (5, 2) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'A',
@@ -1115,8 +1285,8 @@ mod tests {
                         }
                         _ => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[0],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: ' ',
@@ -1194,8 +1364,8 @@ mod tests {
                     match cell.location().values() {
                         (9, 3) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: '*',
@@ -1205,8 +1375,8 @@ mod tests {
                         }
                         (5, 2) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'A',
@@ -1216,8 +1386,8 @@ mod tests {
                         }
                         _ => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[0],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: ' ',
@@ -1295,8 +1465,8 @@ mod tests {
                     match cell.location().values() {
                         (0, 3) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: '*',
@@ -1306,8 +1476,8 @@ mod tests {
                         }
                         (5, 2) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'A',
@@ -1317,8 +1487,8 @@ mod tests {
                         }
                         _ => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[0],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: ' ',
@@ -1396,8 +1566,8 @@ mod tests {
                     match cell.location().values() {
                         (0, 3) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: '*',
@@ -1407,8 +1577,8 @@ mod tests {
                         }
                         (5, 2) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'A',
@@ -1418,8 +1588,8 @@ mod tests {
                         }
                         (1, 0) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'A',
@@ -1429,8 +1599,8 @@ mod tests {
                         }
                         _ => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[0],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: ' ',
@@ -1508,8 +1678,8 @@ mod tests {
                     match cell.location().values() {
                         (0, 3) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: '*',
@@ -1519,8 +1689,8 @@ mod tests {
                         }
                         (5, 2) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'A',
@@ -1530,8 +1700,8 @@ mod tests {
                         }
                         (1, 9) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'A',
@@ -1541,8 +1711,8 @@ mod tests {
                         }
                         _ => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[0],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: ' ',
@@ -1620,8 +1790,8 @@ mod tests {
                     match cell.location().values() {
                         (0, 3) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: '*',
@@ -1631,8 +1801,8 @@ mod tests {
                         }
                         (5, 2) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'A',
@@ -1642,8 +1812,8 @@ mod tests {
                         }
                         _ => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[0],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: ' ',
@@ -1729,8 +1899,8 @@ mod tests {
                     match cell.location().values() {
                         (5, 0) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'B',
@@ -1740,8 +1910,8 @@ mod tests {
                         }
                         (6, 1) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: '*',
@@ -1751,8 +1921,8 @@ mod tests {
                         }
                         _ => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[0],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: ' ',
@@ -1830,8 +2000,8 @@ mod tests {
                     match cell.location().values() {
                         (5, 0) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'B',
@@ -1841,8 +2011,8 @@ mod tests {
                         }
                         (6, 1) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: '*',
@@ -1852,8 +2022,8 @@ mod tests {
                         }
                         _ => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[0],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: ' ',
@@ -1931,8 +2101,8 @@ mod tests {
                     match cell.location().values() {
                         (5, 0) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'B',
@@ -1942,8 +2112,8 @@ mod tests {
                         }
                         (6, 1) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: '*',
@@ -1953,8 +2123,8 @@ mod tests {
                         }
                         _ => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[0],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: ' ',
@@ -2032,8 +2202,8 @@ mod tests {
                     match cell.location().values() {
                         (5, 0) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'B',
@@ -2043,8 +2213,8 @@ mod tests {
                         }
                         (6, 1) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: '*',
@@ -2054,8 +2224,8 @@ mod tests {
                         }
                         _ => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[0],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: ' ',
@@ -2133,8 +2303,8 @@ mod tests {
                     match cell.location().values() {
                         (5, 0) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'B',
@@ -2144,8 +2314,8 @@ mod tests {
                         }
                         (6, 1) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: '*',
@@ -2155,8 +2325,8 @@ mod tests {
                         }
                         _ => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[0],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: ' ',
@@ -2234,8 +2404,8 @@ mod tests {
                     match cell.location().values() {
                         (5, 0) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'B',
@@ -2245,8 +2415,8 @@ mod tests {
                         }
                         (6, 1) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: '*',
@@ -2256,8 +2426,8 @@ mod tests {
                         }
                         (9, 3) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'A',
@@ -2267,8 +2437,8 @@ mod tests {
                         }
                         _ => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[0],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: ' ',
@@ -2346,8 +2516,8 @@ mod tests {
                     match cell.location().values() {
                         (5, 0) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'B',
@@ -2357,8 +2527,8 @@ mod tests {
                         }
                         (6, 1) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: '*',
@@ -2368,8 +2538,8 @@ mod tests {
                         }
                         (0, 3) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'A',
@@ -2379,8 +2549,8 @@ mod tests {
                         }
                         _ => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[0],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: ' ',
@@ -2458,8 +2628,8 @@ mod tests {
                     match cell.location().values() {
                         (5, 0) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'B',
@@ -2469,8 +2639,8 @@ mod tests {
                         }
                         (6, 1) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: '*',
@@ -2480,8 +2650,8 @@ mod tests {
                         }
                         (6, 0) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'A',
@@ -2491,8 +2661,8 @@ mod tests {
                         }
                         _ => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[0],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: ' ',
@@ -2570,8 +2740,8 @@ mod tests {
                     match cell.location().values() {
                         (5, 0) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'B',
@@ -2581,8 +2751,8 @@ mod tests {
                         }
                         (6, 1) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: '*',
@@ -2592,8 +2762,8 @@ mod tests {
                         }
                         (5, 9) => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[1],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: 'A',
@@ -2603,8 +2773,8 @@ mod tests {
                         }
                         _ => {
                             assert_eq!(
-                                *cell.data(),
-                                TerminalRendererMatrixCell {
+                                cell.data()[0],
+                                TerminalRendererMatrixCellItem {
                                     background_color: None,
                                     foreground_color: None,
                                     display: ' ',

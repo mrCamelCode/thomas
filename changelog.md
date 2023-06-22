@@ -1,10 +1,14 @@
 # Next
 ## Breaking Changes
-  - Priority's convenience methods (`lower_than`, `higher_than`) now only borrow the other Priority 
+  - Priority's convenience methods (`lower_than`, `higher_than`) now only borrow the other Priority
+  - Coords structures have had their names updated to always reflect the space they're meant to be used in. This impacts `Coords` and `IntCoords`, which are now `Coords3d` and `IntCoords3d`.
 ## Updates
   - Minor improvements.
   - Added `TerminalCollision::is_collision_between` convenience function.
   - Improved FPS tracking of engine analysis.
+  - The terminal renderer system will now treat a `None` background color as transparency. The background color to be used in a particular rendered cell is determined by starting with the highest layered renderable in that cell and seeing if it has a background color. If it doesn't, the system looks through the layers from there until it hits a renderable with a background color. If it finds one, it'll use that color. If it doesn't (and there's no `default_background_color`), it'll use the Reset color, which is the terminal's default color.
+    - This will help considerably when you have something with no background color that's in front of something _with_ a background color. The thing in the back will have its color show, giving more visual continuity to a scene!
+  - Added `Vector` aliases to the `Coords` structures. Conceptually, the two are the same, but it's the context that's king in determining what it's operating as. Now you have the freedom to use whichever semantically fits in the current context of usage!
 
 # 0.2.3
 ## Updates
