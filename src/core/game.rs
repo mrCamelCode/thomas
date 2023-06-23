@@ -259,6 +259,9 @@ impl Game {
                 GameCommand::RemoveComponentFromEntity(entity, component_name) => self
                     .entity_manager
                     .remove_component_from_entity(&entity, component_name),
+                GameCommand::TriggerEvent(event_name) => {
+                    self.trigger_event(event_name, Rc::clone(&commands))
+                }
             }
         }
     }
@@ -270,6 +273,7 @@ pub enum GameCommand {
     AddComponentsToEntity(Entity, Vec<Box<dyn Component>>),
     RemoveComponentFromEntity(Entity, &'static str),
     DestroyEntity(Entity),
+    TriggerEvent(&'static str),
 }
 
 pub struct GameCommandQueue {

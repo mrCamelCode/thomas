@@ -9,6 +9,7 @@
   - The terminal renderer system will now treat a `None` background color as transparency. The background color to be used in a particular rendered cell is determined by starting with the highest layered renderable in that cell and seeing if it has a background color. If it doesn't, the system looks through the layers from there until it hits a renderable with a background color. If it finds one, it'll use that color. If it doesn't (and there's no `default_background_color`), it'll use the Reset color, which is the terminal's default color.
     - This will help considerably when you have something with no background color that's in front of something _with_ a background color. The thing in the back will have its color show, giving more visual continuity to a scene!
   - Added `Vector` aliases to the `Coords` structures. Conceptually, the two are the same, but it's the context that's king in determining what it's operating as. Now you have the freedom to use whichever semantically fits in the current context of usage!
+  - Added `GameCommand::TriggerEvent`. Use it to trigger an event that you can assign systems to.
 
 # 0.2.3
 ## Updates
