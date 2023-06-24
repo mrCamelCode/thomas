@@ -2,6 +2,7 @@
 ## Breaking Changes
   - Priority's convenience methods (`lower_than`, `higher_than`) now only borrow the other Priority
   - Coords structures have had their names updated to always reflect the space they're meant to be used in. This impacts `Coords` and `IntCoords`, which are now `Coords3d` and `IntCoords3d`.
+  - `WorldText` no longer has `coords`. Attach a transform component (like `TerminalTransform`) to an entity with `WorldText` to specify where in the world it's drawn.
 ## Updates
   - Minor improvements.
   - Added `TerminalCollision::is_collision_between` convenience function.
