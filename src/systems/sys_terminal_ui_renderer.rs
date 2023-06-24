@@ -21,7 +21,7 @@ impl SystemsGenerator for TerminalUiRendererSystemsGenerator {
             System::new(
                 vec![
                     Query::new().has::<Text>(),
-                    Query::new().has::<WorldText>(),
+                    Query::new().has::<WorldText>().has::<TerminalTransform>(),
                     Query::new()
                         .has::<TerminalTextCharacter>()
                         .has::<TerminalRenderer>(),
@@ -72,13 +72,15 @@ fn update_text_ui(results: Vec<QueryResultList>, commands: GameCommandsArg) {
 
         for world_text_result in world_text_results {
             let world_text = world_text_result.components().get::<WorldText>();
+            let world_text_transform = world_text_result.components().get::<TerminalTransform>();
 
             let chars = world_text.value.chars().collect::<Vec<char>>();
 
             let justification_offset =
                 get_justification_offset(&world_text.justification, chars.len());
 
-            let starting_position = world_text.coords + justification_offset + world_text.offset;
+            let starting_position =
+                world_text_transform.coords + justification_offset + world_text.offset;
 
             add_text_entities(
                 &chars,
@@ -930,16 +932,18 @@ mod tests {
                     QueryResultList::new(vec![]),
                     QueryResultList::new(vec![QueryResult::new(
                         Entity(10),
-                        StoredComponentList::new(vec![Rc::new(RefCell::new(Box::new(
-                            WorldText {
+                        StoredComponentList::new(vec![
+                            Rc::new(RefCell::new(Box::new(WorldText {
                                 value: String::from("T"),
-                                coords: IntCoords2d::new(5, 3),
                                 justification: Alignment::Left,
                                 offset: IntCoords2d::zero(),
                                 background_color: None,
                                 foreground_color: None,
-                            },
-                        )))]),
+                            }))),
+                            Rc::new(RefCell::new(Box::new(TerminalTransform {
+                                coords: IntCoords2d::new(5, 3),
+                            }))),
+                        ]),
                     )]),
                     QueryResultList::new(vec![]),
                     QueryResultList::new(vec![QueryResult::new(
@@ -988,16 +992,18 @@ mod tests {
                     QueryResultList::new(vec![]),
                     QueryResultList::new(vec![QueryResult::new(
                         Entity(10),
-                        StoredComponentList::new(vec![Rc::new(RefCell::new(Box::new(
-                            WorldText {
+                        StoredComponentList::new(vec![
+                            Rc::new(RefCell::new(Box::new(WorldText {
                                 value: String::from("T"),
-                                coords: IntCoords2d::new(5, 3),
                                 justification: Alignment::Left,
                                 offset: IntCoords2d::zero(),
                                 background_color: None,
                                 foreground_color: None,
-                            },
-                        )))]),
+                            }))),
+                            Rc::new(RefCell::new(Box::new(TerminalTransform {
+                                coords: IntCoords2d::new(5, 3),
+                            }))),
+                        ]),
                     )]),
                     QueryResultList::new(vec![]),
                     QueryResultList::new(vec![QueryResult::new(
