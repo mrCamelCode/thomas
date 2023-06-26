@@ -4,7 +4,7 @@ license = "MIT"
 description = "An ECS game engine."
 repository = "https://github.com/mrCamelCode/thomas"
 keywords = ["gamedev", "ecs", "game", "engine"]
-version = "0.2.3"
+version = "0.2.4"
 edition = "2021"
 
 [dependencies]

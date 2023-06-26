@@ -1,4 +1,4 @@
-# Next
+# 0.2.4
 
 ## Breaking Changes
 
