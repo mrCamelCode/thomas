@@ -142,6 +142,10 @@ fn get_anchor_positions(
             UiAnchor::MiddleLeft,
             base_coords + IntCoords2d::new(0, zero_indexed_height / 2),
         ),
+        (
+            UiAnchor::Middle,
+            base_coords + IntCoords2d::new(zero_indexed_width / 2, zero_indexed_height / 2),
+        ),
     ])
 }
 

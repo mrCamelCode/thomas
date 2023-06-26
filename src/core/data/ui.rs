@@ -10,6 +10,7 @@ pub enum UiAnchor {
     MiddleBottom,
     BottomLeft,
     MiddleLeft,
+    Middle,
 }
 
 #[derive(PartialEq, Eq, Debug)]
