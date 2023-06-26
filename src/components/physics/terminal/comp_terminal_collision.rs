@@ -1,9 +1,11 @@
 use crate::{Component, Entity, Layer, TerminalCollider};
 
+pub type TerminalCollisionBody = (Entity, TerminalCollider);
+
 /// Represents a collision between two `TerminalCollider`s. Also provides the entities that collided.
 #[derive(Component)]
 pub struct TerminalCollision {
-    pub bodies: [(Entity, TerminalCollider); 2],
+    pub bodies: [TerminalCollisionBody; 2],
 }
 impl TerminalCollision {
     pub fn is_collision_between(&self, collision_layer1: Layer, collision_layer2: Layer) -> bool {
@@ -16,6 +18,26 @@ impl TerminalCollision {
             && self.bodies.iter().any(|(entity, collider)| {
                 collider.layer == collision_layer2 && *entity != first_body_option.unwrap().0
             })
+    }
+
+    /// Returns the first body that's on the specified layer. Note that this will give the _first_
+    /// match. You may find this method less useful when processing a collision between two things on the same collision
+    /// layer.
+    pub fn get_body_on_layer(&self, collision_layer: Layer) -> Option<&TerminalCollisionBody> {
+        self.bodies
+            .iter()
+            .find(|(_, collider)| collider.layer == collision_layer)
+    }
+
+    /// Returns the entity of the first collision body that's on the specified layer. Note that this will give the _first_
+    /// match. You may find this method less useful when processing a collision between two things on the same collision
+    /// layer.
+    pub fn get_entity_on_layer(&self, collision_layer: Layer) -> Option<Entity> {
+        if let Some((entity, _)) = self.get_body_on_layer(collision_layer) {
+            Some(*entity)
+        } else {
+            None
+        }
     }
 }
 
