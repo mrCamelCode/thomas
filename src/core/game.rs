@@ -13,6 +13,8 @@ pub type GameCommandsArg = Rc<RefCell<GameCommandQueue>>;
 
 /// The init event. Runs once before the main game loop starts.
 pub const EVENT_INIT: &str = "init";
+/// The after-init event. Runs once after the init event.
+pub const EVENT_AFTER_INIT: &str = "after-init";
 /// The before-update event. Runs once per frame before the update event.
 pub const EVENT_BEFORE_UPDATE: &str = "before-update";
 /// The update event. Runs once per frame.
@@ -144,6 +146,7 @@ impl Game {
         self.is_playing = true;
 
         self.trigger_event(EVENT_INIT, Rc::clone(&commands));
+        self.trigger_event(EVENT_AFTER_INIT, Rc::clone(&commands));
 
         while self.is_playing {
             self.frame_timer.restart();
@@ -259,6 +262,9 @@ impl Game {
                 GameCommand::RemoveComponentFromEntity(entity, component_name) => self
                     .entity_manager
                     .remove_component_from_entity(&entity, component_name),
+                GameCommand::TriggerEvent(event_name) => {
+                    self.trigger_event(event_name, Rc::clone(&commands))
+                }
             }
         }
     }
@@ -270,6 +276,7 @@ pub enum GameCommand {
     AddComponentsToEntity(Entity, Vec<Box<dyn Component>>),
     RemoveComponentFromEntity(Entity, &'static str),
     DestroyEntity(Entity),
+    TriggerEvent(&'static str),
 }
 
 pub struct GameCommandQueue {

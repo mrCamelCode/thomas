@@ -83,11 +83,11 @@ impl SubAssign for IntCoords2d {
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
-pub struct IntCoords {
+pub struct IntCoords3d {
     coords2d: IntCoords2d,
     z: i64,
 }
-impl IntCoords {
+impl IntCoords3d {
     pub fn new(x: i64, y: i64, z: i64) -> Self {
         Self {
             coords2d: IntCoords2d::new(x, y),
@@ -129,7 +129,7 @@ impl IntCoords {
         Self::backward()
     }
 
-    pub fn distance_from(&self, other: &Coords) -> f64 {
+    pub fn distance_from(&self, other: &Coords3d) -> f64 {
         let IntCoords2d { x, y } = self.coords2d;
         let IntCoords2d {
             x: other_x,
@@ -159,38 +159,38 @@ impl IntCoords {
         (self.coords2d.x, self.coords2d.y, self.z)
     }
 }
-impl Add for IntCoords {
-    type Output = IntCoords;
+impl Add for IntCoords3d {
+    type Output = IntCoords3d;
 
     fn add(self, rhs: Self) -> Self::Output {
         let IntCoords2d { x, y } = IntCoords2d::add(self.coords2d, rhs.coords2d);
 
-        IntCoords {
+        IntCoords3d {
             coords2d: IntCoords2d::new(x, y),
             z: self.z + rhs.z,
         }
     }
 }
-impl Sub for IntCoords {
-    type Output = IntCoords;
+impl Sub for IntCoords3d {
+    type Output = IntCoords3d;
 
     fn sub(self, rhs: Self) -> Self::Output {
         let IntCoords2d { x, y } = IntCoords2d::sub(self.coords2d, rhs.coords2d);
 
-        IntCoords {
+        IntCoords3d {
             coords2d: IntCoords2d::new(x, y),
             z: self.z - rhs.z,
         }
     }
 }
-impl AddAssign for IntCoords {
+impl AddAssign for IntCoords3d {
     fn add_assign(&mut self, rhs: Self) {
         IntCoords2d::add_assign(&mut self.coords2d, rhs.coords2d);
 
         self.z += rhs.z;
     }
 }
-impl SubAssign for IntCoords {
+impl SubAssign for IntCoords3d {
     fn sub_assign(&mut self, rhs: Self) {
         IntCoords2d::sub_assign(&mut self.coords2d, rhs.coords2d);
 
@@ -281,11 +281,11 @@ impl SubAssign for Coords2d {
 }
 
 #[derive(Copy, Clone, PartialEq, PartialOrd, Debug)]
-pub struct Coords {
+pub struct Coords3d {
     coords2d: Coords2d,
     z: f64,
 }
-impl Coords {
+impl Coords3d {
     pub fn new(x: f64, y: f64, z: f64) -> Self {
         Self {
             coords2d: Coords2d::new(x, y),
@@ -327,7 +327,7 @@ impl Coords {
         Self::backward()
     }
 
-    pub fn distance_from(&self, other: &Coords) -> f64 {
+    pub fn distance_from(&self, other: &Coords3d) -> f64 {
         let Coords2d { x, y } = self.coords2d;
         let Coords2d {
             x: other_x,
@@ -363,44 +363,49 @@ impl Coords {
         (x, y, self.z)
     }
 }
-impl Add for Coords {
-    type Output = Coords;
+impl Add for Coords3d {
+    type Output = Coords3d;
 
     fn add(self, rhs: Self) -> Self::Output {
         let Coords2d { x, y } = Coords2d::add(self.coords2d, rhs.coords2d);
 
-        Coords {
+        Coords3d {
             coords2d: Coords2d::new(x, y),
             z: self.z + rhs.z,
         }
     }
 }
-impl Sub for Coords {
-    type Output = Coords;
+impl Sub for Coords3d {
+    type Output = Coords3d;
 
     fn sub(self, rhs: Self) -> Self::Output {
         let Coords2d { x, y } = Coords2d::sub(self.coords2d, rhs.coords2d);
 
-        Coords {
+        Coords3d {
             coords2d: Coords2d::new(x, y),
             z: self.z - rhs.z,
         }
     }
 }
-impl AddAssign for Coords {
+impl AddAssign for Coords3d {
     fn add_assign(&mut self, rhs: Self) {
         Coords2d::add_assign(&mut self.coords2d, rhs.coords2d);
 
         self.z += rhs.z;
     }
 }
-impl SubAssign for Coords {
+impl SubAssign for Coords3d {
     fn sub_assign(&mut self, rhs: Self) {
         Coords2d::sub_assign(&mut self.coords2d, rhs.coords2d);
 
         self.z -= rhs.z;
     }
 }
+
+pub type IntVector2 = IntCoords2d;
+pub type IntVector3 = IntCoords3d;
+pub type Vector2 = Coords2d;
+pub type Vector3 = Coords3d;
 
 #[cfg(test)]
 mod tests {
@@ -411,8 +416,8 @@ mod tests {
 
         #[test]
         fn no_change() {
-            let v1 = Coords::new(1.0, 2.0, 0.0);
-            let v2 = Coords::zero();
+            let v1 = Coords3d::new(1.0, 2.0, 0.0);
+            let v2 = Coords3d::zero();
 
             let v3 = v1 + v2;
 
@@ -422,8 +427,8 @@ mod tests {
 
         #[test]
         fn works_with_positive_values() {
-            let v1 = Coords::new(1.0, 2.0, 0.0);
-            let v2 = Coords::new(3.0, 4.0, 1.0);
+            let v1 = Coords3d::new(1.0, 2.0, 0.0);
+            let v2 = Coords3d::new(3.0, 4.0, 1.0);
 
             let v3 = v1 + v2;
 
@@ -434,8 +439,8 @@ mod tests {
 
         #[test]
         fn works_with_negative_values() {
-            let v1 = Coords::new(1.0, 2.0, 3.0);
-            let v2 = Coords::new(-2.0, -7.0, -3.0);
+            let v1 = Coords3d::new(1.0, 2.0, 3.0);
+            let v2 = Coords3d::new(-2.0, -7.0, -3.0);
 
             let v3 = v1 + v2;
 
@@ -446,8 +451,8 @@ mod tests {
 
         #[test]
         fn works_with_mixed_values() {
-            let v1 = Coords::new(1.0, 2.0, 0.0);
-            let v2 = Coords::new(-2.0, 7.0, -2.0);
+            let v1 = Coords3d::new(1.0, 2.0, 0.0);
+            let v2 = Coords3d::new(-2.0, 7.0, -2.0);
 
             let v3 = v1 + v2;
 
@@ -462,8 +467,8 @@ mod tests {
 
         #[test]
         fn no_change() {
-            let v1 = Coords::new(1.0, 2.0, 0.0);
-            let v2 = Coords::zero();
+            let v1 = Coords3d::new(1.0, 2.0, 0.0);
+            let v2 = Coords3d::zero();
 
             let v3 = v1 - v2;
 
@@ -473,8 +478,8 @@ mod tests {
 
         #[test]
         fn works_with_positive_values() {
-            let v1 = Coords::new(1.0, 2.0, 0.0);
-            let v2 = Coords::new(3.0, 4.0, 1.0);
+            let v1 = Coords3d::new(1.0, 2.0, 0.0);
+            let v2 = Coords3d::new(3.0, 4.0, 1.0);
 
             let v3 = v1 - v2;
 
@@ -485,8 +490,8 @@ mod tests {
 
         #[test]
         fn works_with_negative_values() {
-            let v1 = Coords::new(1.0, 2.0, 3.0);
-            let v2 = Coords::new(-2.0, -7.0, -3.0);
+            let v1 = Coords3d::new(1.0, 2.0, 3.0);
+            let v2 = Coords3d::new(-2.0, -7.0, -3.0);
 
             let v3 = v1 - v2;
 
@@ -497,8 +502,8 @@ mod tests {
 
         #[test]
         fn works_with_mixed_values() {
-            let v1 = Coords::new(1.0, 2.0, 0.0);
-            let v2 = Coords::new(-2.0, 7.0, -2.0);
+            let v1 = Coords3d::new(1.0, 2.0, 0.0);
+            let v2 = Coords3d::new(-2.0, 7.0, -2.0);
 
             let v3 = v1 - v2;
 
@@ -513,7 +518,7 @@ mod tests {
 
         #[test]
         fn in_correct_order() {
-            let v = Coords::new(1.0, 2.0, 3.0);
+            let v = Coords3d::new(1.0, 2.0, 3.0);
 
             assert_eq!(v.values(), (1.0, 2.0, 3.0));
         }

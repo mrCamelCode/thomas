@@ -1,14 +1,10 @@
-use std::collections::VecDeque;
-
 use crate::{
     Alignment, EngineStats, GameCommand, GameCommandsArg, Identity, IntCoords2d, Query,
     QueryResultList, Rgb, System, SystemsGenerator, Text, Timer, UiAnchor, EVENT_BEFORE_UPDATE,
     EVENT_INIT, EVENT_UPDATE,
 };
 
-const NUM_POLLED_SECONDS_FOR_FRAMERATE: u8 = 10;
-
-const FPS_TRACKER_ID: &str = "thomas_fps_tracking_tag";
+pub const FPS_TRACKER_ID: &str = "thomas_fps_tracking_tag";
 
 pub struct EngineAnalysisOptions {
     /// Whether to include UI on the screen that will display current analysis stats.
@@ -37,7 +33,6 @@ impl SystemsGenerator for EngineAnalysisSystemsGenerator {
                             fps: 0,
                             frame_timer: Timer::new(),
                             frame_counter: 0,
-                            frame_counts: VecDeque::new(),
                         })]));
                 }),
             ),
@@ -91,29 +86,18 @@ fn gather_stats(results: Vec<QueryResultList>, _: GameCommandsArg) {
     if let [engine_stats_results, ..] = &results[..] {
         let mut engine_stats = engine_stats_results.get_only_mut::<EngineStats>();
 
+        engine_stats.frame_counter += 1;
+
         if !engine_stats.frame_timer.is_running() {
             engine_stats.frame_timer.start();
         }
 
         if engine_stats.frame_timer.elapsed_millis() >= 1000 {
-            engine_stats.frame_timer.restart();
-
-            while engine_stats.frame_counts.len() >= NUM_POLLED_SECONDS_FOR_FRAMERATE as usize {
-                engine_stats.frame_counts.pop_front();
-            }
-
-            let count = engine_stats.frame_counter;
-            engine_stats.frame_counts.push_back(count);
-
+            engine_stats.fps = engine_stats.frame_counter;
             engine_stats.frame_counter = 0;
-        }
 
-        engine_stats.frame_counter += 1;
-        engine_stats.fps = if engine_stats.frame_counts.len() > 0 {
-            engine_stats.frame_counts.iter().sum::<u64>() / engine_stats.frame_counts.len() as u64
-        } else {
-            0
-        };
+            engine_stats.frame_timer.restart();
+        }
     }
 }
 

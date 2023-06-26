@@ -35,6 +35,14 @@ impl<T> Matrix<T> {
         None
     }
 
+    pub fn get_mut(&mut self, x: u64, y: u64) -> Option<&mut MatrixCell<T>> {
+        if x < self.dimensions.width() && y < self.dimensions.height() {
+            return Some(&mut self.matrix[y as usize][x as usize]);
+        }
+
+        None
+    }
+
     pub fn update_cell_at(&mut self, x: u64, y: u64, data: T) {
         if x < self.dimensions.width() && y < self.dimensions.height() {
             let mut cell = &mut self.matrix[y as usize][x as usize];
@@ -91,6 +99,10 @@ impl<T> MatrixCell<T> {
 
     pub fn data(&self) -> &T {
         &self.data
+    }
+
+    pub fn data_mut(&mut self) -> &mut T {
+        &mut self.data
     }
 }
 

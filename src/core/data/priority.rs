@@ -21,7 +21,7 @@ impl Priority {
         Self { value: u128::MAX }
     }
 
-    pub fn lower_than(other: Priority) -> Self {
+    pub fn lower_than(other: &Priority) -> Self {
         Self {
             value: if other.value == u128::MAX {
                 u128::MAX
@@ -31,7 +31,7 @@ impl Priority {
         }
     }
 
-    pub fn higher_than(other: Priority) -> Self {
+    pub fn higher_than(other: &Priority) -> Self {
         Self {
             value: if other.value == 0 {
                 0
