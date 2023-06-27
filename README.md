@@ -46,11 +46,25 @@ For example, what if I want to write a renderer system that's going to render al
 
 Giving queries the ability to filter puts responsibilities where they belong and lets `System`s focus more on their logic and less on deciding which results to actually act on. While it seems we sacrifice some type safety at first glance, the fact that Thomas encourages you to colocate your systems and queries makes it difficult to accidentally misuse the results of a query and cause a runtime error.
 
+## Demos
+
+You can jump right in with some example projects made using Thomas:
+
+[Space Invaders](https://github.com/mrCamelCode/space_invaders): Similar to but simpler than the classic Space Invaders, this arcade shooter can get pretty hectic! Demonstrates simpler concepts in Thomas, like rendering and moving entities and using user input to control the player character.
+
+![A gif of Space Invaders gameplay](https://raw.github.com/mrCamelCode/assets/main/space_invaders.gif)
+
+[RUNNER](https://github.com/mrCamelCode/runner): A scrolling obstacle avoidance game that shows off colors, camera scrolling, and more.
+
+![A gif of RUNNER gameplay](https://raw.github.com/mrCamelCode/assets/main/runner.gif)
+
 ## A Simple Example
+
+If you prefer to start a little slower and look at basic example before diving into a complete project, read on!
 
 Everything in Thomas starts by making a `Game`. You can chain many things off the game instance before eventually `start`ing it to get the main game loop going. Since Thomas uses ECS, your game is essentially just a collection of `Component`s associated to `Entity`s, and you can manipulate the data on those `Component`s with `System`s.
 
-That description and the following examples are extremely simplified versions of what to expect in an ECS environment. For a more complete look at what a game in Thomas might look like, see the demo I made [here](https://github.com/mrCamelCode/space_invaders). It's a little game like Space Invaders.
+That description and the following examples are extremely simplified versions of what to expect in an ECS environment. For a more complete look at what a game in Thomas might look like, check out some of the [demos](#demos).
 
 ### Starting the game
 
@@ -271,4 +285,4 @@ And that's it! Those are the basics of Thomas, but there are plenty of other thi
 2. Our movement system currently operates on _every_ entity that has a `TerminalTransform` (and no `TerminalCamera`). In a real game, that's unlikely to be what we want. We probably only want to move the player around. You could try to refine the query to make sure only the player is ever matched on, or you could make your own custom `Component` that behaves like a marker to make writing queries that match on just the player entity easier. You might also consider using the `Identity` component.
 3. If we change our movement `System` to use `is_key_pressed` to give our player's finger a break, everything might seem okay at first until you change the `max_frame_rate` of the game. You may notice that our movement is framerate-dependent. Ew! What is this, Dark Souls? We'd probably want to make a custom `Component` that keeps track of a `Timer` that lets us control how quickly translations can be applied to our player. Maybe that's a useful piece of information to include on a custom `Player` component?
 
-To see examples of all these techniques and more (like UI and collisions) in action, check out the [demo](https://github.com/mrCamelCode/space_invaders) I mentioned earlier! It's a simple game inspired by Space Invaders.
+To see examples of all these techniques and more (like UI and collisions) in action, check out the [demos](#demos) I mentioned earlier! They represent much more complete examples of using the engine.
